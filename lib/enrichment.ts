@@ -106,7 +106,22 @@ export async function enrichBook(
     );
     return { status: match.confidence, book: updated ?? undefined };
   } catch {
-    return { status: "error" };
+    // A failed lookup (Google Books rate limit, timeout, network blip, etc.)
+    // must still be recorded — otherwise enrichment_status stays NULL and the
+    // batch query below picks this same book again on the very next call,
+    // forever, since it never stops "needing" a check. Best-effort: if even
+    // this write fails, we fall through and the book is retried next batch,
+    // but a healthy DB should never hit that.
+    try {
+      const updated = await queryOne<Book>(
+        `UPDATE books SET enrichment_status = 'error', enrichment_checked_at = now()
+         WHERE trello_id = $1 RETURNING *`,
+        [book.trello_id]
+      );
+      return { status: "error", book: updated ?? undefined };
+    } catch {
+      return { status: "error" };
+    }
   }
 }
 
@@ -158,6 +173,10 @@ export async function runEnrichmentBatch(limit: number): Promise<BatchEnrichResu
     else if (outcome.status === "not_found") notFound++;
     else if (outcome.status === "error") errors++;
   });
+
+  // Every book pulled into this batch now has a non-null enrichment_status
+  // (matched/low_confidence/not_found/error) unless the write itself failed,
+  // so the same batch is never re-selected by the NULL check below.
 
   const remainingRow = await queryOne<{ count: string }>(
     `SELECT COUNT(*)::int AS count FROM books WHERE enrichment_status IS NULL`
