@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { query } from "./db";
+import type { Book } from "./types";
 
 // Fields that change on nearly every save/drag but aren't meaningful for a
 // "what did I actually change" history — logging these would drown the log
@@ -33,8 +34,8 @@ export interface LogChangeOpts {
   bookId: string;
   bookTitle: string;
   action: "created" | "updated" | "deleted";
-  before?: Record<string, unknown> | null;
-  after?: Record<string, unknown> | null;
+  before?: Book | null;
+  after?: Book | null;
 }
 
 // Records one entry in the Change Log (see /history) — a running history of
@@ -43,8 +44,10 @@ export interface LogChangeOpts {
 // never block or fail the book mutation that triggered it.
 export async function logChange(opts: LogChangeOpts): Promise<void> {
   try {
-    const before = opts.before ?? null;
-    const after = opts.after ?? null;
+    // Book has no index signature, so route through `unknown` to compare
+    // and diff its fields generically below.
+    const before = opts.before ? (opts.before as unknown as Record<string, unknown>) : null;
+    const after = opts.after ? (opts.after as unknown as Record<string, unknown>) : null;
     const changedFields = opts.action === "updated" ? diffFields(before, after) : [];
 
     // A pure reorder or enrichment-only write has nothing meaningful to
