@@ -463,7 +463,7 @@ export default function BookForm({
         </div>
 
         <div className="sm:col-span-2">
-          <label className="label">Notes</label>
+          <label className="label">Description</label>
           <textarea
             className="input"
             rows={3}
