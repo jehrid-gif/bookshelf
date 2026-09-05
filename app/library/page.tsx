@@ -205,7 +205,18 @@ function LibraryInner() {
       // Drive the backfill in chunks from the client — each call only takes
       // a small bite (well under the serverless time limit), so this keeps
       // going until nothing's left, however many books that takes.
+      //
+      // Hard backstop: every book should get a terminal, non-null status in
+      // one pass, so this should never take more than ~total/40 round trips.
+      // If something upstream still misbehaves (e.g. a write silently fails
+      // to persist), stop well short of looping forever instead of hammering
+      // the API and DB indefinitely.
+      const maxIterations = Math.max(20, Math.ceil(total / 40) + 10);
+      let iterations = 0;
+      let stalled = 0;
+      let lastRemaining = Infinity;
       while (true) {
+        iterations++;
         const res = await fetch("/api/books/enrich-batch", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -216,6 +227,19 @@ function LibraryInner() {
         done += data.processed;
         setEnrichProgress({ done, total: Math.max(total, done + data.remaining) });
         if (data.processed === 0 || data.remaining === 0) break;
+
+        stalled = data.remaining >= lastRemaining ? stalled + 1 : 0;
+        lastRemaining = data.remaining;
+        if (stalled >= 3) {
+          throw new Error(
+            `Stopped: ${data.remaining} book(s) aren't making progress (repeated lookup failures). Try again later.`
+          );
+        }
+        if (iterations >= maxIterations) {
+          throw new Error(
+            `Stopped after ${iterations} batches as a safety limit — ${data.remaining} book(s) still unchecked.`
+          );
+        }
       }
     } catch (err: any) {
       setError(err.message);
