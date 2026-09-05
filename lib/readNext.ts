@@ -97,6 +97,61 @@ export function computeReadNext(books: Book[]): ReadNextEntry[] {
   return results;
 }
 
+/**
+ * Companion to computeReadNext: series you haven't started yet at all (no
+ * finished or in-progress entries) but do own an unread book for. These are
+ * "start something new" picks rather than "continue what you started" ones —
+ * computeReadNext deliberately skips them, so anything that wants a full
+ * pool of reasonable next-reads (Roll the Dice, Suggestions) needs both.
+ */
+export function computeFreshStarts(books: Book[]): ReadNextEntry[] {
+  const bySeries = new Map<string, Book[]>();
+  for (const b of books) {
+    const s = (b.series || "").trim();
+    if (!s) continue;
+    if (!bySeries.has(s)) bySeries.set(s, []);
+    bySeries.get(s)!.push(b);
+  }
+
+  const results: ReadNextEntry[] = [];
+  for (const [series, entries] of bySeries) {
+    if (entries.some((b) => b.status === "reading" || b.status === "finished")) continue;
+    const toRead = entries.filter((b) => b.status === "to_read");
+    if (toRead.length === 0) continue;
+
+    const indexed = toRead
+      .filter((b) => b.series_index !== null)
+      .sort((a, b) => a.series_index! - b.series_index!);
+    const pick =
+      indexed[0] || toRead.find((b) => b.series_position === "starter") || toRead[0];
+
+    results.push({ series, book: pick, reason: `Start ${series} — a fresh series` });
+  }
+  results.sort((a, b) => a.series.localeCompare(b.series));
+  return results;
+}
+
+/** Books with no series at all — always a safe, unblocked pick. */
+export function standaloneToRead(books: Book[]): ReadNextEntry[] {
+  return books
+    .filter((b) => b.status === "to_read" && (!b.series || !b.series.trim()))
+    .map((b) => ({ series: "", book: b, reason: "Standalone — nothing else to read first" }));
+}
+
+/**
+ * The full pool of "reasonable to pick up right now" books: continuing an
+ * already-started series, starting a fresh one, or a standalone. Used by
+ * Roll the Dice and the Suggestions tab so neither one under-covers what's
+ * actually eligible.
+ */
+export function computeSuggestionPool(books: Book[]): ReadNextEntry[] {
+  return [
+    ...computeReadNext(books),
+    ...computeFreshStarts(books),
+    ...standaloneToRead(books),
+  ];
+}
+
 export function computeCurrentlyReading(books: Book[]): Map<string, Book[]> {
   const map = new Map<string, Book[]>();
   for (const b of books) {

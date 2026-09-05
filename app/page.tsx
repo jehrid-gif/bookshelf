@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Book } from "@/lib/types";
 import { isIncomplete, GENRES, WORLDS, FORMATS } from "@/lib/types";
-import { computeReadNext } from "@/lib/readNext";
 import ExportButton from "@/components/ExportButton";
 import KanbanBoard from "@/components/KanbanBoard";
 import SearchFilterBar from "@/components/SearchFilterBar";
@@ -44,10 +43,45 @@ export default function DashboardPage() {
     setBooks((prev) => (prev ? prev.filter((b) => b.trello_id !== id) : prev));
   }
 
+  const [reordering, setReordering] = useState(false);
+
+  // One-press reorder: priority books lead the To Read column, everything
+  // else keeps its existing relative order behind them.
+  async function bringPriorityToTop() {
+    if (!books) return;
+    const toReadSorted = books
+      .filter((b) => b.status === "to_read")
+      .sort((a, b) => a.board_pos - b.board_pos);
+    const ordered = [
+      ...toReadSorted.filter((b) => b.priority),
+      ...toReadSorted.filter((b) => !b.priority),
+    ];
+    const changed = ordered
+      .map((b, i) => ({ b, pos: i }))
+      .filter(({ b, pos }) => b.board_pos !== pos);
+    if (changed.length === 0) return;
+
+    setReordering(true);
+    // Optimistic update first so the board re-sorts immediately.
+    for (const { b, pos } of changed) applySavedBook({ ...b, board_pos: pos });
+    try {
+      for (const { b, pos } of changed) {
+        await fetch(`/api/books/${b.trello_id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ board_pos: pos }),
+        });
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setReordering(false);
+    }
+  }
+
   const derived = useMemo(() => {
     const list = books || [];
     const toRead = list.filter((b) => b.status === "to_read");
-    const readNext = computeReadNext(list);
     const reading = list.filter((b) => b.status === "reading");
     const incomplete = list.filter(isIncomplete);
     const uncheckedForCovers = list.filter((b) => !b.enrichment_status).length;
@@ -86,7 +120,6 @@ export default function DashboardPage() {
     ];
 
     return {
-      readNext,
       reading,
       incomplete,
       uncheckedForCovers,
@@ -127,7 +160,7 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-xl font-bold text-ink">Dashboard</h1>
         <button className="btn btn-primary" onClick={() => setDiscoverOpen(true)} type="button">
-          🎲 Roll the Dice
+          🎲 Find Your Next Read
         </button>
       </div>
 
@@ -254,6 +287,14 @@ export default function DashboardPage() {
               />
               ✨ Special editions
             </label>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={bringPriorityToTop}
+              disabled={reordering}
+            >
+              {reordering ? "Reordering…" : "🔥 Priority to Top"}
+            </button>
           </div>
         </SearchFilterBar>
         <KanbanBoard
@@ -285,7 +326,7 @@ export default function DashboardPage() {
 
       {discoverOpen && (
         <DiscoverPanel
-          readNext={derived.readNext}
+          books={books}
           onClose={() => setDiscoverOpen(false)}
           onBookUpdated={applySavedBook}
           onBookDeleted={handleDeleted}

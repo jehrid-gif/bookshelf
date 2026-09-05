@@ -64,9 +64,11 @@ export default function MonthlyGenreChart({ books }: { books: Book[] }) {
           </span>
         ))}
       </div>
-      <div className="overflow-x-auto">
-        <div className="flex items-end gap-3 pb-1" style={{ minHeight: CHART_HEIGHT + 28 }}>
-          {months.map((m) => (
+      <div className="flex items-end gap-3 pb-1 flex-wrap sm:flex-nowrap" style={{ minHeight: CHART_HEIGHT + 28 }}>
+          {months.map((m) => {
+            const isFirst = m.month === 0;
+            const isLast = m.month === 11;
+            return (
             <div
               key={m.month}
               className="relative flex flex-col items-center justify-end flex-none"
@@ -75,7 +77,12 @@ export default function MonthlyGenreChart({ books }: { books: Book[] }) {
               onMouseLeave={() => setHoverMonth((h) => (h === m.month ? null : h))}
             >
               {hoverMonth === m.month && m.total > 0 && (
-                <div className="absolute bottom-full mb-2 z-10 w-44 rounded-md border border-stone-200 bg-surface shadow-lg p-2.5 text-xs left-1/2 -translate-x-1/2">
+                <div
+                  className={
+                    "absolute bottom-full mb-2 z-10 w-44 rounded-md border border-stone-200 bg-surface shadow-lg p-2.5 text-xs " +
+                    (isFirst ? "left-0" : isLast ? "right-0" : "left-1/2 -translate-x-1/2")
+                  }
+                >
                   <p className="font-semibold text-ink mb-1.5">
                     {MONTH_ABBR[m.month]} — {m.total} finished
                   </p>
@@ -112,8 +119,8 @@ export default function MonthlyGenreChart({ books }: { books: Book[] }) {
               </div>
               <p className="text-[11px] text-stone-500 mt-1.5">{MONTH_ABBR[m.month]}</p>
             </div>
-          ))}
-        </div>
+            );
+          })}
       </div>
     </div>
   );
