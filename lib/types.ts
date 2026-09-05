@@ -103,7 +103,15 @@ export type BookInput = Partial<
 > & { title: string };
 
 export function isIncomplete(b: Book): boolean {
-  return b.genre === null || b.pages === null;
+  // Wishlist books aren't owned yet — there's nothing to fill in until
+  // they're actually acquired, so they never count as "incomplete".
+  if (b.status === "wishlist") return false;
+  if (b.genre === null || b.pages === null) return true;
+  // Cover type only makes sense for a physical copy — an ebook has no
+  // hardcover/softcover to record, so it's never flagged for lacking one.
+  const hasPhysicalCopy = b.format === "physical" || b.format === "physical+ebook";
+  if (hasPhysicalCopy && b.cover_type === null) return true;
+  return false;
 }
 
 export interface UpcomingRelease {

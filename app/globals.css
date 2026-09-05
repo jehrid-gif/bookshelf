@@ -2,17 +2,97 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+/* ---------------------------------------------------------------------
+   Color themes. Every theme-aware Tailwind color (parchment/surface/ink/
+   brass/stone-*) resolves through these variables — see tailwind.config.ts.
+   Values are space-separated "R G B" so Tailwind's rgb(var(..) / <alpha>)
+   opacity modifiers keep working (bg-parchment/60, bg-brass/10, etc).
+   --------------------------------------------------------------------- */
+
+/* Parchment (default) — warm cream library. */
+:root,
+[data-theme="parchment"] {
   color-scheme: light;
+  --color-page: 250 246 238;
+  --color-surface: 255 255 255;
+  --color-ink: 43 38 32;
+  --color-brass: 169 120 47;
+  --stone-50: 250 247 240;
+  --stone-100: 245 238 224;
+  --stone-200: 230 221 202;
+  --stone-300: 209 197 172;
+  --stone-400: 168 154 128;
+  --stone-500: 120 106 84;
+  --stone-600: 87 75 58;
+  --stone-700: 60 51 38;
+}
+
+/* Midnight Study — dark, warm gold accents. */
+[data-theme="midnight"] {
+  color-scheme: dark;
+  --color-page: 22 25 33;
+  --color-surface: 32 36 47;
+  --color-ink: 231 227 217;
+  --color-brass: 196 143 71;
+  --stone-50: 38 42 54;
+  --stone-100: 45 50 63;
+  --stone-200: 58 64 79;
+  --stone-300: 76 83 100;
+  --stone-400: 106 113 130;
+  --stone-500: 150 154 165;
+  --stone-600: 178 181 190;
+  --stone-700: 206 208 214;
+}
+
+/* Forest Library — deep green, light surfaces. */
+[data-theme="forest"] {
+  color-scheme: light;
+  --color-page: 241 244 236;
+  --color-surface: 253 254 251;
+  --color-ink: 27 34 27;
+  --color-brass: 47 92 58;
+  --stone-50: 236 240 230;
+  --stone-100: 226 231 216;
+  --stone-200: 204 212 190;
+  --stone-300: 178 189 160;
+  --stone-400: 140 152 122;
+  --stone-500: 98 112 82;
+  --stone-600: 70 84 58;
+  --stone-700: 48 58 40;
+}
+
+/* Rosewood — warm burgundy/blush, light surfaces. */
+[data-theme="rosewood"] {
+  color-scheme: light;
+  --color-page: 250 240 238;
+  --color-surface: 255 252 251;
+  --color-ink: 46 27 27;
+  --color-brass: 138 42 58;
+  --stone-50: 245 231 229;
+  --stone-100: 237 217 214;
+  --stone-200: 222 191 187;
+  --stone-300: 199 156 151;
+  --stone-400: 163 116 111;
+  --stone-500: 122 79 75;
+  --stone-600: 92 55 52;
+  --stone-700: 64 36 34;
 }
 
 body {
-  background-color: #faf6ee;
-  color: #2b2620;
+  background-color: rgb(var(--color-page));
+  color: rgb(var(--color-ink));
+  font-family: var(--font-body), ui-serif, Georgia, serif;
+}
+
+h1,
+h2,
+h3,
+.font-display {
+  font-family: var(--font-display), ui-serif, Georgia, serif;
 }
 
 .card {
-  @apply bg-white rounded-lg shadow-sm border border-stone-200 p-4;
+  @apply bg-surface rounded-lg shadow-sm border border-stone-200 p-4;
 }
 
 .btn {
@@ -20,7 +100,7 @@ body {
 }
 
 .btn-primary {
-  @apply bg-brass text-white hover:bg-amber-800;
+  @apply bg-brass text-white hover:opacity-90;
 }
 
 .btn-secondary {
@@ -32,7 +112,7 @@ body {
 }
 
 .input {
-  @apply w-full rounded-md border border-stone-300 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brass/40 focus:border-brass;
+  @apply w-full rounded-md border border-stone-300 bg-surface px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brass/40 focus:border-brass;
 }
 
 .label {

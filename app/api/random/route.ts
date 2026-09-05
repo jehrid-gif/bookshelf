@@ -11,6 +11,7 @@ export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
     const world = url.searchParams.get("world");
+    const genre = url.searchParams.get("genre");
 
     const books = await query<Book>(
       `SELECT * FROM books WHERE status = 'to_read'`
@@ -25,6 +26,9 @@ export async function GET(req: NextRequest) {
 
     if (world) {
       pool = pool.filter((b) => b.worlds.includes(world));
+    }
+    if (genre) {
+      pool = pool.filter((b) => b.genre === genre);
     }
 
     if (pool.length === 0) {

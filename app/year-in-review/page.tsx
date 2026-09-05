@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import BookDetail from "@/components/BookDetail";
-import GenreTrendChart from "@/components/GenreTrendChart";
+import MonthlyGenreChart from "@/components/MonthlyGenreChart";
 import type { Book } from "@/lib/types";
 
 const MONTH_NAMES = [
@@ -155,7 +155,7 @@ function YearInReviewInner() {
                 key={g}
                 style={{ width: `${(count / selected.total) * 100}%`, background: colorFor(g) }}
                 title={`${g}: ${count}`}
-                className="h-full border-r-2 border-white last:border-r-0"
+                className="h-full border-r-2 border-surface last:border-r-0"
               />
             ))}
           </div>
@@ -174,8 +174,10 @@ function YearInReviewInner() {
 
         <div className="card">
           <h2 className="font-semibold text-ink mb-1">Genre Trends</h2>
-          <p className="text-xs text-stone-500 mb-4">How {selected.year} compares to other years.</p>
-          <GenreTrendChart books={books} />
+          <p className="text-xs text-stone-500 mb-4">
+            What you were reading, month by month, in {selected.year}.
+          </p>
+          <MonthlyGenreChart books={selected.books} />
         </div>
 
         <div className="space-y-5">
@@ -189,7 +191,7 @@ function YearInReviewInner() {
                   <li key={b.trello_id}>
                     <button
                       onClick={() => setViewing(b)}
-                      className="w-full text-left text-sm rounded-md border border-stone-200 bg-white px-3 py-2 hover:bg-parchment/60 hover:border-stone-300 transition-colors flex items-center justify-between gap-2"
+                      className="w-full text-left text-sm rounded-md border border-stone-200 bg-surface px-3 py-2 hover:bg-parchment/60 hover:border-stone-300 transition-colors flex items-center justify-between gap-2"
                     >
                       <span>
                         <span className="font-medium text-ink">{b.title}</span>

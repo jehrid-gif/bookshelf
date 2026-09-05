@@ -2,16 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import ThemeSwitcher from "./ThemeSwitcher";
 
 const LINKS = [
   { href: "/", label: "Dashboard" },
-  { href: "/board", label: "Board" },
   { href: "/library", label: "Library" },
   { href: "/year-in-review", label: "Year in Review" },
   { href: "/releases", label: "Upcoming Releases" },
-  { href: "/physical-todo", label: "Physical Books What Need Readin'" },
-  { href: "/special-editions", label: "Special Editions" },
-  { href: "/duplicates", label: "Duplicates" },
 ];
 
 export default function Nav() {
@@ -24,9 +21,9 @@ export default function Nav() {
   }
 
   return (
-    <header className="border-b border-stone-200 bg-white">
+    <header className="border-b border-stone-200 bg-surface">
       <div className="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-2">
-        <Link href="/" className="text-lg font-bold text-ink whitespace-nowrap">
+        <Link href="/" className="text-lg font-display font-bold text-ink whitespace-nowrap">
           📚 The Reading Shelf
         </Link>
         <nav className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
@@ -45,6 +42,7 @@ export default function Nav() {
           ))}
         </nav>
         <div className="ml-auto flex items-center gap-3">
+          <ThemeSwitcher />
           <button
             onClick={handleLogout}
             className="text-xs text-stone-400 hover:text-stone-600"

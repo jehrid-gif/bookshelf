@@ -6,6 +6,7 @@ import BookForm from "@/components/BookForm";
 import BookDetail from "@/components/BookDetail";
 import BookCover from "@/components/BookCover";
 import Modal from "@/components/Modal";
+import SearchFilterBar from "@/components/SearchFilterBar";
 import type { Book } from "@/lib/types";
 import { GENRES, STATUSES, FORMATS, WORLDS, MOODS, isIncomplete } from "@/lib/types";
 
@@ -14,6 +15,28 @@ const STATUS_LABEL: Record<string, string> = {
   reading: "Reading",
   finished: "Finished",
   wishlist: "Wishlist",
+};
+
+function normalizeForDupe(s: string | null): string {
+  return (s || "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+type SortKey = "title" | "author" | "series" | "genre" | "status" | "pages" | "rating";
+
+const COMPARATORS: Record<SortKey, (a: Book, b: Book) => number> = {
+  title: (a, b) => a.title.localeCompare(b.title),
+  author: (a, b) => (a.author || "").localeCompare(b.author || ""),
+  series: (a, b) =>
+    (a.series || "").localeCompare(b.series || "") ||
+    (a.series_index || 0) - (b.series_index || 0),
+  genre: (a, b) => (a.genre || "").localeCompare(b.genre || ""),
+  status: (a, b) => STATUS_LABEL[a.status].localeCompare(STATUS_LABEL[b.status]),
+  pages: (a, b) => (a.pages || 0) - (b.pages || 0),
+  rating: (a, b) => (a.my_rating || 0) - (b.my_rating || 0),
 };
 
 function LibraryInner() {
@@ -26,6 +49,7 @@ function LibraryInner() {
   const [viewing, setViewing] = useState<{ book: Book; mode: "view" | "edit" } | null>(null);
 
   const [search, setSearch] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [status, setStatus] = useState("");
   const [genre, setGenre] = useState("");
   const [series, setSeries] = useState("");
@@ -34,7 +58,11 @@ function LibraryInner() {
   const [format, setFormat] = useState("");
   const [incompleteOnly, setIncompleteOnly] = useState(false);
   const [needsReviewOnly, setNeedsReviewOnly] = useState(false);
-  const [sortBy, setSortBy] = useState("shelf");
+  const [physicalTodoOnly, setPhysicalTodoOnly] = useState(false);
+  const [specialEditionsOnly, setSpecialEditionsOnly] = useState(false);
+  const [duplicatesOnly, setDuplicatesOnly] = useState(false);
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [enriching, setEnriching] = useState(false);
   const [enrichProgress, setEnrichProgress] = useState<{ done: number; total: number } | null>(
     null
@@ -57,7 +85,8 @@ function LibraryInner() {
     load();
   }, []);
 
-  // Read initial filters from the URL (deep links from the Dashboard etc.)
+  // Read initial filters from the URL (deep links from the Dashboard, or
+  // from the old Physical/Special Editions/Duplicates pages).
   useEffect(() => {
     const s = searchParams.get("status");
     if (s) setStatus(s);
@@ -65,6 +94,17 @@ function LibraryInner() {
     if (g) setGenre(g);
     const f = searchParams.get("format");
     if (f) setFormat(f);
+    const filter = searchParams.get("filter");
+    if (filter === "physical_todo") {
+      setPhysicalTodoOnly(true);
+      setFiltersOpen(true);
+    } else if (filter === "special_editions") {
+      setSpecialEditionsOnly(true);
+      setFiltersOpen(true);
+    } else if (filter === "duplicates") {
+      setDuplicatesOnly(true);
+      setFiltersOpen(true);
+    }
     if (searchParams.get("new") === "1") {
       setAdding(true);
     }
@@ -74,6 +114,7 @@ function LibraryInner() {
   useEffect(() => {
     if (searchParams.get("incomplete") === "1" && books) {
       setIncompleteOnly(true);
+      setFiltersOpen(true);
       const list = books.filter(isIncomplete);
       if (list.length > 0) setViewing({ book: list[0], mode: "edit" });
     }
@@ -86,7 +127,8 @@ function LibraryInner() {
       searchParams.get("incomplete") === "1" ||
       searchParams.get("status") ||
       searchParams.get("genre") ||
-      searchParams.get("format")
+      searchParams.get("format") ||
+      searchParams.get("filter")
     ) {
       router.replace("/library");
     }
@@ -124,6 +166,21 @@ function LibraryInner() {
     return books.filter((b) => b.enrichment_status === "low_confidence");
   }, [books]);
 
+  const duplicateIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!books) return ids;
+    const groups = new Map<string, Book[]>();
+    for (const b of books) {
+      const key = `${normalizeForDupe(b.title)}::${normalizeForDupe(b.author)}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(b);
+    }
+    for (const g of groups.values()) {
+      if (g.length > 1) for (const b of g) ids.add(b.trello_id);
+    }
+    return ids;
+  }, [books]);
+
   const filtered = useMemo(() => {
     if (!books) return [];
     let list = books;
@@ -143,30 +200,20 @@ function LibraryInner() {
     if (format) list = list.filter((b) => b.format === format);
     if (incompleteOnly) list = list.filter(isIncomplete);
     if (needsReviewOnly) list = list.filter((b) => b.enrichment_status === "low_confidence");
+    if (physicalTodoOnly) {
+      list = list.filter(
+        (b) => b.status !== "finished" && (b.format === "physical" || b.format === "physical+ebook")
+      );
+    }
+    if (specialEditionsOnly) list = list.filter((b) => b.special_edition);
+    if (duplicatesOnly) list = list.filter((b) => duplicateIds.has(b.trello_id));
 
     const sorted = [...list];
-    switch (sortBy) {
-      case "title":
-        sorted.sort((a, b) => a.title.localeCompare(b.title));
-        break;
-      case "author":
-        sorted.sort((a, b) => (a.author || "").localeCompare(b.author || ""));
-        break;
-      case "series":
-        sorted.sort(
-          (a, b) =>
-            (a.series || "").localeCompare(b.series || "") ||
-            (a.series_index || 0) - (b.series_index || 0)
-        );
-        break;
-      case "pages":
-        sorted.sort((a, b) => (a.pages || 0) - (b.pages || 0));
-        break;
-      case "rating":
-        sorted.sort((a, b) => (b.my_rating || 0) - (a.my_rating || 0));
-        break;
-      default:
-        sorted.sort((a, b) => a.board_pos - b.board_pos || a.title.localeCompare(b.title));
+    if (sortKey) {
+      const cmp = COMPARATORS[sortKey];
+      sorted.sort((a, b) => (sortDir === "asc" ? cmp(a, b) : -cmp(a, b)));
+    } else {
+      sorted.sort((a, b) => a.board_pos - b.board_pos || a.title.localeCompare(b.title));
     }
     return sorted;
   }, [
@@ -180,11 +227,15 @@ function LibraryInner() {
     format,
     incompleteOnly,
     needsReviewOnly,
-    sortBy,
+    physicalTodoOnly,
+    specialEditionsOnly,
+    duplicatesOnly,
+    duplicateIds,
+    sortKey,
+    sortDir,
   ]);
 
   function resetFilters() {
-    setSearch("");
     setStatus("");
     setGenre("");
     setSeries("");
@@ -193,6 +244,39 @@ function LibraryInner() {
     setFormat("");
     setIncompleteOnly(false);
     setNeedsReviewOnly(false);
+    setPhysicalTodoOnly(false);
+    setSpecialEditionsOnly(false);
+    setDuplicatesOnly(false);
+  }
+
+  function toggleSort(key: SortKey) {
+    if (sortKey !== key) {
+      setSortKey(key);
+      setSortDir("asc");
+    } else if (sortDir === "asc") {
+      setSortDir("desc");
+    } else {
+      setSortKey(null);
+      setSortDir("asc");
+    }
+  }
+
+  function renderTh(id: SortKey, label: string) {
+    const active = sortKey === id;
+    return (
+      <th className="text-left px-3 py-2 font-semibold">
+        <button
+          type="button"
+          onClick={() => toggleSort(id)}
+          className="flex items-center gap-1 hover:text-ink"
+        >
+          {label}
+          <span className={"text-brass " + (active ? "" : "opacity-0")}>
+            {sortDir === "asc" ? "▲" : "▼"}
+          </span>
+        </button>
+      </th>
+    );
   }
 
   async function runEnrichment() {
@@ -307,91 +391,111 @@ function LibraryInner() {
         </div>
       )}
 
-      <div className="card space-y-3">
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-          <input
-            className="input col-span-2 lg:col-span-2"
-            placeholder="Search title or author…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-          <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="">All statuses</option>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {STATUS_LABEL[s]}
-              </option>
-            ))}
-          </select>
-          <select className="input" value={genre} onChange={(e) => setGenre(e.target.value)}>
-            <option value="">All genres</option>
-            {GENRES.map((g) => (
-              <option key={g} value={g}>
-                {g}
-              </option>
-            ))}
-          </select>
-          <select className="input" value={format} onChange={(e) => setFormat(e.target.value)}>
-            <option value="">All formats</option>
-            {FORMATS.map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
-          <select className="input" value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-            <option value="shelf">Sort: Shelf order</option>
-            <option value="title">Sort: Title</option>
-            <option value="author">Sort: Author</option>
-            <option value="series">Sort: Series</option>
-            <option value="pages">Sort: Pages</option>
-            <option value="rating">Sort: Rating</option>
-          </select>
-          <select className="input" value={series} onChange={(e) => setSeries(e.target.value)}>
-            <option value="">All series</option>
-            {seriesList.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-          <select className="input" value={world} onChange={(e) => setWorld(e.target.value)}>
-            <option value="">All worlds</option>
-            {WORLDS.map((w) => (
-              <option key={w} value={w}>
-                {w}
-              </option>
-            ))}
-          </select>
-          <select className="input" value={mood} onChange={(e) => setMood(e.target.value)}>
-            <option value="">All moods</option>
-            {MOODS.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
-          <label className="flex items-center gap-2 text-sm px-1">
-            <input
-              type="checkbox"
-              checked={incompleteOnly}
-              onChange={(e) => setIncompleteOnly(e.target.checked)}
-            />
-            Missing data only
-          </label>
-          <label className="flex items-center gap-2 text-sm px-1">
-            <input
-              type="checkbox"
-              checked={needsReviewOnly}
-              onChange={(e) => setNeedsReviewOnly(e.target.checked)}
-            />
-            Needs review ({reviewBooks.length})
-          </label>
-          <button className="btn btn-secondary" onClick={resetFilters}>
-            Reset filters
-          </button>
+      <SearchFilterBar
+        search={search}
+        onSearchChange={setSearch}
+        open={filtersOpen}
+        onOpenChange={setFiltersOpen}
+        resultsLabel={books ? `Showing ${filtered.length} of ${books.length} books` : undefined}
+      >
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+            <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
+              <option value="">All statuses</option>
+              {STATUSES.map((s) => (
+                <option key={s} value={s}>
+                  {STATUS_LABEL[s]}
+                </option>
+              ))}
+            </select>
+            <select className="input" value={genre} onChange={(e) => setGenre(e.target.value)}>
+              <option value="">All genres</option>
+              {GENRES.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
+            <select className="input" value={format} onChange={(e) => setFormat(e.target.value)}>
+              <option value="">All formats</option>
+              {FORMATS.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+            <select className="input" value={series} onChange={(e) => setSeries(e.target.value)}>
+              <option value="">All series</option>
+              {seriesList.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+            <select className="input" value={world} onChange={(e) => setWorld(e.target.value)}>
+              <option value="">All worlds</option>
+              {WORLDS.map((w) => (
+                <option key={w} value={w}>
+                  {w}
+                </option>
+              ))}
+            </select>
+            <select className="input" value={mood} onChange={(e) => setMood(e.target.value)}>
+              <option value="">All moods</option>
+              {MOODS.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={incompleteOnly}
+                onChange={(e) => setIncompleteOnly(e.target.checked)}
+              />
+              Missing data only
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={needsReviewOnly}
+                onChange={(e) => setNeedsReviewOnly(e.target.checked)}
+              />
+              Needs review ({reviewBooks.length})
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={physicalTodoOnly}
+                onChange={(e) => setPhysicalTodoOnly(e.target.checked)}
+              />
+              📦 Physical, unread
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={specialEditionsOnly}
+                onChange={(e) => setSpecialEditionsOnly(e.target.checked)}
+              />
+              ✨ Special editions
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={duplicatesOnly}
+                onChange={(e) => setDuplicatesOnly(e.target.checked)}
+              />
+              🔁 Possible duplicates
+            </label>
+            <button className="btn btn-secondary ml-auto" onClick={resetFilters} type="button">
+              Reset filters
+            </button>
+          </div>
         </div>
-      </div>
+      </SearchFilterBar>
 
       {error && (
         <div className="rounded-md bg-red-50 text-red-700 text-sm px-3 py-2">{error}</div>
@@ -400,84 +504,81 @@ function LibraryInner() {
       {!books && !error && <p className="text-stone-500">Loading your shelf…</p>}
 
       {books && (
-        <>
-          <p className="text-sm text-stone-500">
-            Showing {filtered.length} of {books.length} books
-          </p>
-          <div className="card !p-0 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-stone-50 text-stone-500 text-xs uppercase tracking-wide">
-                <tr>
-                  <th className="text-left px-3 py-2 font-semibold"></th>
-                  <th className="text-left px-3 py-2 font-semibold"></th>
-                  <th className="text-left px-3 py-2 font-semibold">Title</th>
-                  <th className="text-left px-3 py-2 font-semibold">Author</th>
-                  <th className="text-left px-3 py-2 font-semibold">Series</th>
-                  <th className="text-left px-3 py-2 font-semibold">Genre</th>
-                  <th className="text-left px-3 py-2 font-semibold">Status</th>
-                  <th className="text-left px-3 py-2 font-semibold">Pages</th>
-                  <th className="text-left px-3 py-2 font-semibold">Rating</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((b) => (
-                  <tr
-                    key={b.trello_id}
-                    className="border-t border-stone-100 hover:bg-parchment/50 cursor-pointer"
-                    onClick={() => setViewing({ book: b, mode: "view" })}
-                  >
-                    <td className="px-3 py-2">
-                      <div className="flex flex-col gap-0.5">
-                        {isIncomplete(b) && (
-                          <span title="Missing genre or page count">⚠️</span>
-                        )}
-                        {b.enrichment_status === "low_confidence" && (
-                          <span title="Uncertain Google Books match — verify cover/description">
-                            🔍
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2">
-                      <BookCover
-                        book={b}
-                        className="w-8 h-11 rounded"
-                        padding="p-0.5"
-                        textSize="text-[5px]"
-                        lineClamp="line-clamp-4"
-                      />
-                    </td>
-                    <td className="px-3 py-2 font-medium text-ink">
-                      {b.title}
-                      {b.special_edition && (
-                        <span className="ml-1.5 badge bg-brass/10 text-amber-900">
-                          special
+        <div className="card !p-0 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-stone-50 text-stone-500 text-xs uppercase tracking-wide">
+              <tr>
+                <th className="text-left px-3 py-2 font-semibold"></th>
+                <th className="text-left px-3 py-2 font-semibold"></th>
+                {renderTh("title", "Title")}
+                {renderTh("author", "Author")}
+                {renderTh("series", "Series")}
+                {renderTh("genre", "Genre")}
+                {renderTh("status", "Status")}
+                {renderTh("pages", "Pages")}
+                {renderTh("rating", "Rating")}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((b) => (
+                <tr
+                  key={b.trello_id}
+                  className="border-t border-stone-100 hover:bg-parchment/50 cursor-pointer"
+                  onClick={() => setViewing({ book: b, mode: "view" })}
+                >
+                  <td className="px-3 py-2">
+                    <div className="flex flex-col gap-0.5">
+                      {isIncomplete(b) && (
+                        <span title="Missing genre, page count, or (for a physical copy) cover type">
+                          ⚠️
                         </span>
                       )}
-                    </td>
-                    <td className="px-3 py-2 text-stone-600">{b.author || "—"}</td>
-                    <td className="px-3 py-2 text-stone-600">
-                      {b.series ? `${b.series}${b.series_index ? ` #${b.series_index}` : ""}` : "—"}
-                    </td>
-                    <td className="px-3 py-2 text-stone-600">{b.genre || "—"}</td>
-                    <td className="px-3 py-2 text-stone-600">{STATUS_LABEL[b.status]}</td>
-                    <td className="px-3 py-2 text-stone-600">{b.pages ?? "—"}</td>
-                    <td className="px-3 py-2 text-stone-600">
-                      {b.my_rating ? "★".repeat(b.my_rating) : "—"}
-                    </td>
-                  </tr>
-                ))}
-                {filtered.length === 0 && (
-                  <tr>
-                    <td colSpan={9} className="px-3 py-6 text-center text-stone-400">
-                      No books match these filters.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </>
+                      {b.enrichment_status === "low_confidence" && (
+                        <span title="Uncertain Google Books match — verify cover/description">
+                          🔍
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <BookCover
+                      book={b}
+                      className="w-8 h-11 rounded"
+                      padding="p-0.5"
+                      textSize="text-[5px]"
+                      lineClamp="line-clamp-4"
+                    />
+                  </td>
+                  <td className="px-3 py-2 font-medium text-ink">
+                    {b.title}
+                    {b.special_edition && (
+                      <span className="ml-1.5 badge bg-brass/10 text-amber-900">
+                        special
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-stone-600">{b.author || "—"}</td>
+                  <td className="px-3 py-2 text-stone-600">
+                    {b.series ? `${b.series}${b.series_index ? ` #${b.series_index}` : ""}` : "—"}
+                  </td>
+                  <td className="px-3 py-2 text-stone-600">{b.genre || "—"}</td>
+                  <td className="px-3 py-2 text-stone-600">{STATUS_LABEL[b.status]}</td>
+                  <td className="px-3 py-2 text-stone-600">{b.pages ?? "—"}</td>
+                  <td className="px-3 py-2 text-stone-600">
+                    {b.my_rating ? "★".repeat(b.my_rating) : "—"}
+                  </td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="px-3 py-6 text-center text-stone-400">
+                    No books match these filters.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {adding && (

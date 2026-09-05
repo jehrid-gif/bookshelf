@@ -1,102 +1,190 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { query } from "@/lib/db";
+import { useRouter } from "next/navigation";
 import type { Book } from "@/lib/types";
-import { isIncomplete } from "@/lib/types";
-import { computeReadNext, computeCurrentlyReading } from "@/lib/readNext";
-import RandomPickButton from "@/components/RandomPickButton";
-import WarhammerButton from "@/components/WarhammerButton";
+import { isIncomplete, GENRES, WORLDS, FORMATS } from "@/lib/types";
+import { computeReadNext } from "@/lib/readNext";
 import ExportButton from "@/components/ExportButton";
-import DashboardBookLists from "@/components/DashboardBookLists";
-import GenreTrendChart from "@/components/GenreTrendChart";
+import KanbanBoard from "@/components/KanbanBoard";
+import SearchFilterBar from "@/components/SearchFilterBar";
+import ReadingPanel from "@/components/ReadingPanel";
+import DiscoverPanel from "@/components/DiscoverPanel";
 
-export const dynamic = "force-dynamic";
+export default function DashboardPage() {
+  const router = useRouter();
+  const [books, setBooks] = useState<Book[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-export default async function DashboardPage() {
-  const books = await query<Book>(`SELECT * FROM books`);
+  const [readingOpen, setReadingOpen] = useState(false);
+  const [discoverOpen, setDiscoverOpen] = useState(false);
 
-  const toRead = books.filter((b) => b.status === "to_read");
-  const readNext = computeReadNext(books);
-  const currentlyReading = computeCurrentlyReading(books);
-  const incomplete = books.filter(isIncomplete);
-  const uncheckedForCovers = books.filter((b) => !b.enrichment_status).length;
-  const finished = books.filter((b) => b.status === "finished");
-  const owned = books.filter((b) => b.owned);
-  const wishlist = books.filter((b) => b.status === "wishlist");
+  const [boardSearch, setBoardSearch] = useState("");
+  const [boardFiltersOpen, setBoardFiltersOpen] = useState(false);
+  const [boardGenre, setBoardGenre] = useState("");
+  const [boardWorld, setBoardWorld] = useState("");
+  const [boardFormat, setBoardFormat] = useState("");
+  const [boardSpecialOnly, setBoardSpecialOnly] = useState(false);
 
-  const currentYear = new Date().getFullYear();
-  const finishedThisYear = finished.filter(
-    (b) => b.date_finished && new Date(b.date_finished).getFullYear() === currentYear
-  );
-  const pagesThisYear = finishedThisYear.reduce((sum, b) => sum + (b.pages || 0), 0);
-  const rated = finished.filter((b) => typeof b.my_rating === "number");
-  const avgRating = rated.length
-    ? rated.reduce((sum, b) => sum + (b.my_rating || 0), 0) / rated.length
-    : null;
+  useEffect(() => {
+    fetch("/api/books")
+      .then((res) => res.json())
+      .then((data) => setBooks(data as Book[]))
+      .catch((err) => setError(err.message));
+  }, []);
 
-  const stats = {
-    total: books.length,
-    finished: finished.length,
-    reading: books.filter((b) => b.status === "reading").length,
-    toRead: toRead.length,
-    wishlist: wishlist.length,
-  };
-
-  // Physical / Digital / All completion percentages
-  const physical = books.filter((b) => b.format === "physical" || b.format === "physical+ebook");
-  const digital = books.filter((b) => b.format === "ebook" || b.format === "physical+ebook");
-  const formatBreakdown = [
-    { label: "Physical", ...pct(physical) },
-    { label: "Digital", ...pct(digital) },
-    { label: "All Books", ...pct(books) },
-  ];
-  function pct(list: Book[]) {
-    const done = list.filter((b) => b.status === "finished").length;
-    return { done, total: list.length, percent: list.length ? Math.round((done / list.length) * 100) : 0 };
+  function applySavedBook(updated: Book) {
+    setBooks((prev) =>
+      prev ? prev.map((b) => (b.trello_id === updated.trello_id ? updated : b)) : prev
+    );
   }
 
-  const currentlyReadingEntries = Array.from(currentlyReading.entries()).sort((a, b) =>
-    a[0].localeCompare(b[0])
-  );
+  function handleDeleted(id: string) {
+    setBooks((prev) => (prev ? prev.filter((b) => b.trello_id !== id) : prev));
+  }
+
+  const derived = useMemo(() => {
+    const list = books || [];
+    const toRead = list.filter((b) => b.status === "to_read");
+    const readNext = computeReadNext(list);
+    const reading = list.filter((b) => b.status === "reading");
+    const incomplete = list.filter(isIncomplete);
+    const uncheckedForCovers = list.filter((b) => !b.enrichment_status).length;
+    const finished = list.filter((b) => b.status === "finished");
+    const owned = list.filter((b) => b.owned);
+    const wishlist = list.filter((b) => b.status === "wishlist");
+
+    const currentYear = new Date().getFullYear();
+    const finishedThisYear = finished.filter(
+      (b) => b.date_finished && new Date(b.date_finished).getFullYear() === currentYear
+    );
+    const pagesThisYear = finishedThisYear.reduce((sum, b) => sum + (b.pages || 0), 0);
+    const rated = finished.filter((b) => typeof b.my_rating === "number");
+    const avgRating = rated.length
+      ? rated.reduce((sum, b) => sum + (b.my_rating || 0), 0) / rated.length
+      : null;
+
+    const stats = {
+      total: list.length,
+      finished: finished.length,
+      reading: reading.length,
+      toRead: toRead.length,
+      wishlist: wishlist.length,
+    };
+
+    function pct(sub: Book[]) {
+      const done = sub.filter((b) => b.status === "finished").length;
+      return { done, total: sub.length, percent: sub.length ? Math.round((done / sub.length) * 100) : 0 };
+    }
+    const physical = list.filter((b) => b.format === "physical" || b.format === "physical+ebook");
+    const digital = list.filter((b) => b.format === "ebook" || b.format === "physical+ebook");
+    const formatBreakdown = [
+      { label: "Physical", ...pct(physical) },
+      { label: "Digital", ...pct(digital) },
+      { label: "All Books", ...pct(list) },
+    ];
+
+    return {
+      readNext,
+      reading,
+      incomplete,
+      uncheckedForCovers,
+      currentYear,
+      finishedThisYear,
+      pagesThisYear,
+      avgRating,
+      stats,
+      owned,
+      formatBreakdown,
+    };
+  }, [books]);
+
+  const boardFilter = (b: Book) => {
+    if (boardSearch) {
+      const q = boardSearch.trim().toLowerCase();
+      if (!b.title.toLowerCase().includes(q) && !(b.author || "").toLowerCase().includes(q)) {
+        return false;
+      }
+    }
+    if (boardGenre && b.genre !== boardGenre) return false;
+    if (boardWorld && !b.worlds.includes(boardWorld)) return false;
+    if (boardFormat && b.format !== boardFormat) return false;
+    if (boardSpecialOnly && !b.special_edition) return false;
+    return true;
+  };
+
+  if (error) {
+    return <div className="rounded-md bg-red-50 text-red-700 text-sm px-3 py-2">{error}</div>;
+  }
+
+  if (!books) {
+    return <p className="text-stone-500">Loading your shelf…</p>;
+  }
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold text-ink">Dashboard</h1>
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <h1 className="text-xl font-bold text-ink">Dashboard</h1>
+        <button className="btn btn-primary" onClick={() => setDiscoverOpen(true)} type="button">
+          🎲 Roll the Dice
+        </button>
+      </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <StatTile label="Total Books" value={stats.total} href="/library" />
-        <StatTile label="Finished" value={stats.finished} href="/library?status=finished" />
-        <StatTile label="Reading" value={stats.reading} href="/library?status=reading" />
-        <StatTile label="To Read" value={stats.toRead} href="/library?status=to_read" />
-        <StatTile label="Wishlist" value={stats.wishlist} href="/library?status=wishlist" />
+        <StatTile label="Total Books" value={derived.stats.total} onClick={() => router.push("/library")} />
+        <StatTile
+          label="Finished"
+          value={derived.stats.finished}
+          onClick={() => router.push("/library?status=finished")}
+        />
+        <StatTile label="Reading" value={derived.stats.reading} onClick={() => setReadingOpen(true)} />
+        <StatTile
+          label="To Read"
+          value={derived.stats.toRead}
+          onClick={() => router.push("/library?status=to_read")}
+        />
+        <StatTile
+          label="Wishlist"
+          value={derived.stats.wishlist}
+          onClick={() => router.push("/library?status=wishlist")}
+        />
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 border border-stone-200 rounded-lg overflow-hidden bg-white">
-        <LedgerCell value={owned.length} label="Owned" />
-        <LedgerCell value={finishedThisYear.length} label={`Finished ${currentYear}`} />
-        <LedgerCell value={pagesThisYear.toLocaleString()} label={`Pages ${currentYear}`} />
-        <LedgerCell value={avgRating ? `${avgRating.toFixed(1)}★` : "—"} label="Avg Rating" />
+      <div className="grid grid-cols-2 sm:grid-cols-4 border border-stone-200 rounded-lg overflow-hidden bg-surface">
+        <LedgerCell value={derived.owned.length} label="Owned" />
+        <LedgerCell
+          value={derived.finishedThisYear.length}
+          label={`Finished ${derived.currentYear}`}
+          href={`/year-in-review?year=${derived.currentYear}`}
+        />
+        <LedgerCell value={derived.pagesThisYear.toLocaleString()} label={`Pages ${derived.currentYear}`} />
+        <LedgerCell
+          value={derived.avgRating ? `${derived.avgRating.toFixed(1)}★` : "—"}
+          label="Avg Rating"
+        />
       </div>
 
-      {incomplete.length > 0 && (
+      {derived.incomplete.length > 0 && (
         <Link
           href="/library?incomplete=1"
           className="block card border-amber-300 bg-amber-50 hover:bg-amber-100 transition-colors"
         >
           <p className="text-amber-900 font-medium">
-            ⚠️ {incomplete.length} book{incomplete.length === 1 ? "" : "s"} missing a genre or
-            page count — click to fill in the next one
+            ⚠️ {derived.incomplete.length} book{derived.incomplete.length === 1 ? "" : "s"} missing
+            data — click to fill in the next one
           </p>
         </Link>
       )}
 
-      {uncheckedForCovers > 0 && (
+      {derived.uncheckedForCovers > 0 && (
         <Link
           href="/library"
           className="block card border-sky-200 bg-sky-50 hover:bg-sky-100 transition-colors"
         >
           <p className="text-sky-900 font-medium">
-            🔍 {uncheckedForCovers} book{uncheckedForCovers === 1 ? "" : "s"} haven't been
-            checked against Google Books for cover art, descriptions, and ISBNs yet — click to
+            🔍 {derived.uncheckedForCovers} book{derived.uncheckedForCovers === 1 ? "" : "s"} haven't
+            been checked against Google Books for cover art, descriptions, and ISBNs yet — click to
             run it
           </p>
         </Link>
@@ -105,7 +193,7 @@ export default async function DashboardPage() {
       <div className="card">
         <h2 className="font-semibold text-ink mb-3">📚 Completion by Format</h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {formatBreakdown.map((f) => (
+          {derived.formatBreakdown.map((f) => (
             <div key={f.label}>
               <div className="flex items-baseline justify-between mb-1">
                 <p className="text-sm font-medium text-ink">{f.label}</p>
@@ -114,27 +202,66 @@ export default async function DashboardPage() {
                 </p>
               </div>
               <div className="h-2 rounded-full bg-stone-100 overflow-hidden">
-                <div
-                  className="h-full bg-brass rounded-full"
-                  style={{ width: `${f.percent}%` }}
-                />
+                <div className="h-full bg-brass rounded-full" style={{ width: `${f.percent}%` }} />
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      <DashboardBookLists readNext={readNext} currentlyReading={currentlyReadingEntries} />
-
-      <div className="card">
-        <h2 className="font-semibold text-ink mb-1">📈 Genre Trends</h2>
-        <p className="text-xs text-stone-500 mb-4">Books finished per year, by genre.</p>
-        <GenreTrendChart books={books} />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <RandomPickButton />
-        <WarhammerButton />
+      <div className="space-y-3">
+        <h2 className="font-semibold text-ink font-display">📋 Board</h2>
+        <SearchFilterBar
+          search={boardSearch}
+          onSearchChange={setBoardSearch}
+          open={boardFiltersOpen}
+          onOpenChange={setBoardFiltersOpen}
+        >
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <select className="input" value={boardGenre} onChange={(e) => setBoardGenre(e.target.value)}>
+              <option value="">All genres</option>
+              {GENRES.map((g) => (
+                <option key={g} value={g}>
+                  {g}
+                </option>
+              ))}
+            </select>
+            <select className="input" value={boardWorld} onChange={(e) => setBoardWorld(e.target.value)}>
+              <option value="">All worlds</option>
+              {WORLDS.map((w) => (
+                <option key={w} value={w}>
+                  {w}
+                </option>
+              ))}
+            </select>
+            <select
+              className="input"
+              value={boardFormat}
+              onChange={(e) => setBoardFormat(e.target.value)}
+            >
+              <option value="">All formats</option>
+              {FORMATS.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+            <label className="flex items-center gap-2 text-sm px-1">
+              <input
+                type="checkbox"
+                checked={boardSpecialOnly}
+                onChange={(e) => setBoardSpecialOnly(e.target.checked)}
+              />
+              ✨ Special editions
+            </label>
+          </div>
+        </SearchFilterBar>
+        <KanbanBoard
+          books={books}
+          onBookUpdated={applySavedBook}
+          onBookDeleted={handleDeleted}
+          filter={boardFilter}
+        />
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -144,35 +271,66 @@ export default async function DashboardPage() {
         <Link href="/releases" className="btn btn-secondary">
           🔮 Upcoming Releases
         </Link>
-        <Link href="/physical-todo" className="btn btn-secondary">
-          📦 Physical Books What Need Readin'
-        </Link>
-        <Link href="/special-editions" className="btn btn-secondary">
-          ✨ Special Editions
-        </Link>
-        <Link href="/duplicates" className="btn btn-secondary">
-          🔁 Duplicates
-        </Link>
         <ExportButton />
       </div>
+
+      {readingOpen && (
+        <ReadingPanel
+          books={derived.reading}
+          onClose={() => setReadingOpen(false)}
+          onBookUpdated={applySavedBook}
+          onBookDeleted={handleDeleted}
+        />
+      )}
+
+      {discoverOpen && (
+        <DiscoverPanel
+          readNext={derived.readNext}
+          onClose={() => setDiscoverOpen(false)}
+          onBookUpdated={applySavedBook}
+          onBookDeleted={handleDeleted}
+        />
+      )}
     </div>
   );
 }
 
-function StatTile({ label, value, href }: { label: string; value: number; href: string }) {
+function StatTile({ label, value, onClick }: { label: string; value: number; onClick: () => void }) {
   return (
-    <Link href={href} className="card text-center hover:bg-parchment/60 transition-colors block">
+    <button
+      type="button"
+      onClick={onClick}
+      className="card text-center hover:bg-parchment/60 transition-colors w-full"
+    >
       <p className="text-2xl font-bold text-ink">{value}</p>
       <p className="text-xs uppercase tracking-wide text-stone-500">{label}</p>
-    </Link>
+    </button>
   );
 }
 
-function LedgerCell({ value, label }: { value: number | string; label: string }) {
-  return (
-    <div className="px-4 py-3 border-r border-b sm:border-b-0 border-stone-200 last:border-r-0">
+function LedgerCell({
+  value,
+  label,
+  href,
+}: {
+  value: number | string;
+  label: string;
+  href?: string;
+}) {
+  const inner = (
+    <>
       <p className="text-lg font-semibold text-ink font-mono tabular-nums">{value}</p>
       <p className="text-[10px] uppercase tracking-wide text-stone-500 mt-0.5">{label}</p>
-    </div>
+    </>
   );
+  const className =
+    "px-4 py-3 border-r border-b sm:border-b-0 border-stone-200 last:border-r-0 block";
+  if (href) {
+    return (
+      <Link href={href} className={`${className} hover:bg-parchment/60 transition-colors`}>
+        {inner}
+      </Link>
+    );
+  }
+  return <div className={className}>{inner}</div>;
 }
