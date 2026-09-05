@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { query, queryOne } from "@/lib/db";
 import type { Book, BookInput } from "@/lib/types";
 import { enrichBook } from "@/lib/enrichment";
+import { logChange } from "@/lib/changeLog";
 
 export const dynamic = "force-dynamic";
 
@@ -84,6 +85,15 @@ export async function POST(req: NextRequest) {
       } catch {
         // ignore — book is already saved, enrichment can happen later
       }
+    }
+
+    if (finalBook) {
+      await logChange({
+        bookId: finalBook.trello_id,
+        bookTitle: finalBook.title,
+        action: "created",
+        after: finalBook,
+      });
     }
 
     return NextResponse.json(finalBook, { status: 201 });

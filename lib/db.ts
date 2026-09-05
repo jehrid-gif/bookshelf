@@ -1,4 +1,4 @@
-import { Pool, type QueryResultRow } from "pg";
+import { Pool, type QueryResultRow, type PoolClient } from "pg";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -37,4 +37,25 @@ export async function queryOne<T extends QueryResultRow = any>(
 ): Promise<T | null> {
   const rows = await query<T>(text, params);
   return rows[0] ?? null;
+}
+
+// For multi-statement operations that must all succeed or all roll back
+// (the debug-page restore/wipe tools, notably) — a dedicated client held for
+// BEGIN/COMMIT/ROLLBACK rather than the pool's per-query connections.
+export async function withTransaction<T>(
+  fn: (client: PoolClient) => Promise<T>
+): Promise<T> {
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 }

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Fraunces, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 import Nav from "@/components/Nav";
+import Footer from "@/components/Footer";
 import ThemeProvider from "@/components/ThemeProvider";
 
 const displayFont = Fraunces({
@@ -35,6 +36,7 @@ export default function RootLayout({
         <ThemeProvider>
           <Nav />
           <main className="max-w-6xl mx-auto px-4 py-6">{children}</main>
+          <Footer />
         </ThemeProvider>
       </body>
     </html>

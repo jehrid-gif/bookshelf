@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { query, queryOne } from "@/lib/db";
 import type { Book } from "@/lib/types";
+import { logChange } from "@/lib/changeLog";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +66,13 @@ export async function PATCH(
       return NextResponse.json({ error: "No fields to update" }, { status: 400 });
     }
 
+    const before = await queryOne<Book>(`SELECT * FROM books WHERE trello_id = $1`, [
+      params.id,
+    ]);
+    if (!before) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
+
     sets.push(`updated_at = now()`);
     values.push(params.id);
 
@@ -76,6 +84,15 @@ export async function PATCH(
     if (!updated) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+
+    await logChange({
+      bookId: updated.trello_id,
+      bookTitle: updated.title,
+      action: "updated",
+      before,
+      after: updated,
+    });
+
     return NextResponse.json(updated);
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
@@ -87,12 +104,18 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const rows = await query(`DELETE FROM books WHERE trello_id = $1 RETURNING trello_id`, [
+    const rows = await query<Book>(`DELETE FROM books WHERE trello_id = $1 RETURNING *`, [
       params.id,
     ]);
     if (rows.length === 0) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
+    await logChange({
+      bookId: rows[0].trello_id,
+      bookTitle: rows[0].title,
+      action: "deleted",
+      before: rows[0],
+    });
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
