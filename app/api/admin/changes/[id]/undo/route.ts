@@ -79,7 +79,13 @@ export async function POST(
           { status: 400 }
         );
       }
-      const fields = entry.changed_fields || [];
+      // length_category is a GENERATED ALWAYS column (derived from `pages`
+      // by Postgres) — it can never be set explicitly, only recomputed as a
+      // side effect of restoring `pages`. Newer log entries never record it
+      // as a changed field to begin with, but this filters it out
+      // defensively too, so entries logged before that fix can still be
+      // undone instead of failing on the same generated-column error.
+      const fields = (entry.changed_fields || []).filter((f) => f !== "length_category");
       if (fields.length === 0 || !entry.before) {
         return NextResponse.json(
           { error: "This entry has nothing restorable on it." },
