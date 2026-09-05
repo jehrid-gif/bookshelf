@@ -212,6 +212,7 @@ export default function BookForm({
               {book?.enrichment_status === "low_confidence" &&
                 "⚠️ Low-confidence match — verify the cover/description"}
               {book?.enrichment_status === "not_found" && "No Google Books match found yet"}
+              {book?.enrichment_status === "error" && "⚠️ Lookup failed — try Refetch"}
               {!book?.enrichment_status && "Not checked against Google Books yet"}
             </p>
             {refetchMsg && <p className="text-xs text-stone-600 mt-0.5">{refetchMsg}</p>}
