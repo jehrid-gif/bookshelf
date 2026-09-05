@@ -5,11 +5,17 @@ import type { Book } from "./types";
 // Fields that change on nearly every save/drag but aren't meaningful for a
 // "what did I actually change" history — logging these would drown the log
 // in noise from routine drag-to-reorder and background cover/ISBN lookups.
+// length_category also belongs here for a different reason: it's a
+// GENERATED ALWAYS column Postgres derives from `pages`, so it always
+// changes alongside `pages` and can never be written to directly — logging
+// it as its own "changed field" would make Undo try to set it explicitly
+// and fail.
 const IGNORED_FIELDS = new Set([
   "board_pos",
   "updated_at",
   "enrichment_status",
   "enrichment_checked_at",
+  "length_category",
 ]);
 
 function diffFields(
