@@ -152,13 +152,3 @@ export function computeSuggestionPool(books: Book[]): ReadNextEntry[] {
   ];
 }
 
-export function computeCurrentlyReading(books: Book[]): Map<string, Book[]> {
-  const map = new Map<string, Book[]>();
-  for (const b of books) {
-    if (b.status !== "reading") continue;
-    const s = (b.series || "Standalone").trim() || "Standalone";
-    if (!map.has(s)) map.set(s, []);
-    map.get(s)!.push(b);
-  }
-  return map;
-}

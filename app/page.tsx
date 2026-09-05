@@ -124,13 +124,18 @@ export default function DashboardPage() {
     // Optimistic update first so the board re-sorts immediately.
     for (const { b, pos } of changed) applySavedBook({ ...b, board_pos: pos });
     try {
-      for (const { b, pos } of changed) {
-        await fetch(`/api/books/${b.trello_id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ board_pos: pos }),
-        });
-      }
+      // Each PATCH touches a different book's board_pos independently, so
+      // there's no write conflict between them — firing them together
+      // instead of one-at-a-time turns N round-trips into one.
+      await Promise.all(
+        changed.map(({ b, pos }) =>
+          fetch(`/api/books/${b.trello_id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ board_pos: pos }),
+          })
+        )
+      );
     } catch (err: any) {
       setError(err.message);
     } finally {
