@@ -91,7 +91,7 @@ export interface Book {
   description: string | null;
   cover_url: string | null;
   isbn: string | null;
-  enrichment_status: "matched" | "low_confidence" | "not_found" | null;
+  enrichment_status: "matched" | "low_confidence" | "not_found" | "error" | null;
   enrichment_checked_at: string | null;
   board_pos: number;
   created_at: string;
