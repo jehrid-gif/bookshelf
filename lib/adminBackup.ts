@@ -1,12 +1,17 @@
 import { randomUUID } from "crypto";
 import type { Book } from "./types";
 
-// Every column on the books table, in INSERT order — kept in one place so
-// the restore route and its validation stay in sync with the schema. Full
-// fidelity restore (not the normal "add a book" path): trello_id,
-// created_at, enrichment_status etc. are all preserved from the backup
-// rather than regenerated, so a restore reproduces the library exactly as
-// it was at export time.
+// Every column on the books table that can actually be written to, in
+// INSERT order — kept in one place so the restore route and its validation
+// stay in sync with the schema. Full fidelity restore (not the normal "add
+// a book" path): trello_id, created_at, enrichment_status etc. are all
+// preserved from the backup rather than regenerated, so a restore
+// reproduces the library exactly as it was at export time.
+//
+// Deliberately excludes `length_category` — it's a GENERATED ALWAYS AS
+// column (derived from `pages` by Postgres itself), so it comes back for
+// free once `pages` is restored, and Postgres rejects any INSERT that
+// tries to give a generated column an explicit value.
 export const BACKUP_COLUMNS = [
   "trello_id",
   "title",
@@ -16,7 +21,6 @@ export const BACKUP_COLUMNS = [
   "series_index",
   "series_position",
   "pages",
-  "length_category",
   "status",
   "owned",
   "format",
@@ -71,7 +75,8 @@ export function normalizeBackupRow(raw: any, index: number): NormalizeResult {
     series_index: num(raw.series_index),
     series_position: raw.series_position ?? null,
     pages: num(raw.pages),
-    length_category: raw.length_category ?? null,
+    // length_category is intentionally omitted — see the BACKUP_COLUMNS
+    // comment above; Postgres derives it from `pages` on its own.
     status: raw.status ?? "to_read",
     owned: raw.owned ?? true,
     format: raw.format ?? null,
