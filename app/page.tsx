@@ -10,6 +10,11 @@ import KanbanBoard from "@/components/KanbanBoard";
 import SearchFilterBar from "@/components/SearchFilterBar";
 import ReadingPanel from "@/components/ReadingPanel";
 import DiscoverPanel from "@/components/DiscoverPanel";
+import BarcodeScannerModal from "@/components/BarcodeScannerModal";
+import BookDetail from "@/components/BookDetail";
+import BookForm from "@/components/BookForm";
+import Modal from "@/components/Modal";
+import { normalizeIsbn } from "@/lib/isbn";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -18,6 +23,13 @@ export default function DashboardPage() {
 
   const [readingOpen, setReadingOpen] = useState(false);
   const [discoverOpen, setDiscoverOpen] = useState(false);
+
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanSeed, setScanSeed] = useState<Partial<Book> | null>(null);
+  const [scanLookingUp, setScanLookingUp] = useState(false);
+  const [scanNotice, setScanNotice] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [viewingBook, setViewingBook] = useState<Book | null>(null);
 
   const [boardSearch, setBoardSearch] = useState("");
   const [boardFiltersOpen, setBoardFiltersOpen] = useState(false);
@@ -41,6 +53,53 @@ export default function DashboardPage() {
 
   function handleDeleted(id: string) {
     setBooks((prev) => (prev ? prev.filter((b) => b.trello_id !== id) : prev));
+    setViewingBook(null);
+  }
+
+  function closeAdding() {
+    setAdding(false);
+    setScanSeed(null);
+    setScanNotice(null);
+  }
+
+  function handleAdded(created: Book) {
+    setBooks((prev) => (prev ? [created, ...prev] : [created]));
+    closeAdding();
+  }
+
+  // Barcode scan result: an ISBN already on a book in the library opens that
+  // book's card directly; otherwise it's looked up on Google Books to
+  // pre-fill a new Add Book form.
+  async function handleIsbnDetected(rawIsbn: string) {
+    setScanOpen(false);
+    const isbn = normalizeIsbn(rawIsbn);
+
+    const match = (books || []).find((b) => b.isbn && normalizeIsbn(b.isbn) === isbn);
+    if (match) {
+      setViewingBook(match);
+      return;
+    }
+
+    setScanLookingUp(true);
+    setScanNotice(null);
+    try {
+      const res = await fetch(`/api/books/lookup-isbn?isbn=${encodeURIComponent(isbn)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lookup failed");
+      if (data.found) {
+        setScanSeed(data.seed);
+      } else {
+        setScanSeed({ isbn });
+        setScanNotice(
+          "No match found on Google Books for that ISBN — fill in the rest by hand."
+        );
+      }
+      setAdding(true);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setScanLookingUp(false);
+    }
   }
 
   const [reordering, setReordering] = useState(false);
@@ -159,9 +218,19 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-xl font-bold text-ink">Dashboard</h1>
-        <button className="btn btn-primary" onClick={() => setDiscoverOpen(true)} type="button">
-          🎲 Find Your Next Read
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            className="btn btn-secondary"
+            onClick={() => setScanOpen(true)}
+            disabled={scanLookingUp}
+            type="button"
+          >
+            {scanLookingUp ? "Looking up…" : "📷 Scan"}
+          </button>
+          <button className="btn btn-primary" onClick={() => setDiscoverOpen(true)} type="button">
+            🎲 Find Your Next Read
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
@@ -330,6 +399,35 @@ export default function DashboardPage() {
           onClose={() => setDiscoverOpen(false)}
           onBookUpdated={applySavedBook}
           onBookDeleted={handleDeleted}
+        />
+      )}
+
+      {scanOpen && (
+        <BarcodeScannerModal onDetected={handleIsbnDetected} onClose={() => setScanOpen(false)} />
+      )}
+
+      {adding && (
+        <Modal title="Add Book" onClose={closeAdding}>
+          <div className="space-y-3">
+            {scanNotice && (
+              <p className="text-sm rounded-md bg-amber-50 text-amber-900 px-3 py-2">
+                {scanNotice}
+              </p>
+            )}
+            <BookForm book={null} seed={scanSeed} onSaved={handleAdded} onCancel={closeAdding} />
+          </div>
+        </Modal>
+      )}
+
+      {viewingBook && (
+        <BookDetail
+          book={viewingBook}
+          onClose={() => setViewingBook(null)}
+          onSaved={(b) => {
+            applySavedBook(b);
+            setViewingBook(b);
+          }}
+          onDeleted={handleDeleted}
         />
       )}
     </div>

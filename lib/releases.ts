@@ -36,7 +36,7 @@ export function isFutureRelease(raw: string | null | undefined): boolean {
   return d.getTime() >= Date.now();
 }
 
-function guessGenre(categories: string[]): string | null {
+export function guessGenre(categories: string[]): string | null {
   const joined = categories.join(" ").toLowerCase();
   if (joined.includes("fantasy")) return "Fantasy";
   if (joined.includes("science fiction")) return "Science Fiction";
@@ -53,7 +53,7 @@ const WORLD_KEYWORDS: [string, string][] = [
   ["warhammer", "Warhammer 40,000"],
 ];
 
-function guessWorld(text: string): string | null {
+export function guessWorld(text: string): string | null {
   const lower = text.toLowerCase();
   for (const [kw, world] of WORLD_KEYWORDS) {
     if (lower.includes(kw)) return world;

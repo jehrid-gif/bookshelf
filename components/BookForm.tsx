@@ -37,44 +37,50 @@ type FormState = {
   cover_url: string;
 };
 
-function toFormState(b?: Book | null): FormState {
+// `seed` pre-fills a brand-new book (e.g. from a barcode scan's Google Books
+// lookup) without switching the form into edit mode — it's only consulted
+// when there's no existing `book` to edit.
+function toFormState(b?: Book | null, seed?: Partial<Book> | null): FormState {
+  const src = b ?? seed ?? null;
   return {
-    title: b?.title ?? "",
-    author: b?.author ?? "",
-    genre: b?.genre ?? "",
-    series: b?.series ?? "",
-    series_index: b?.series_index?.toString() ?? "",
-    series_position: b?.series_position ?? "",
-    pages: b?.pages?.toString() ?? "",
+    title: src?.title ?? "",
+    author: src?.author ?? "",
+    genre: src?.genre ?? "",
+    series: src?.series ?? "",
+    series_index: src?.series_index?.toString() ?? "",
+    series_position: src?.series_position ?? "",
+    pages: src?.pages?.toString() ?? "",
     status: b?.status ?? "to_read",
     owned: b?.owned ?? true,
-    format: b?.format ?? "",
-    cover_type: b?.cover_type ?? "",
+    format: src?.format ?? "",
+    cover_type: src?.cover_type ?? "",
     special_edition: b?.special_edition ?? false,
     my_rating: b?.my_rating?.toString() ?? "",
     moods: b?.moods ?? [],
-    worlds: b?.worlds ?? [],
+    worlds: src?.worlds ?? [],
     priority: b?.priority ?? false,
     date_started: b?.date_started?.slice(0, 10) ?? "",
     date_finished: b?.date_finished?.slice(0, 10) ?? "",
-    description: b?.description ?? "",
-    isbn: b?.isbn ?? "",
-    cover_url: b?.cover_url ?? "",
+    description: src?.description ?? "",
+    isbn: src?.isbn ?? "",
+    cover_url: src?.cover_url ?? "",
   };
 }
 
 export default function BookForm({
   book,
+  seed,
   onSaved,
   onCancel,
   onDeleted,
 }: {
   book?: Book | null;
+  seed?: Partial<Book> | null;
   onSaved: (b: Book) => void;
   onCancel: () => void;
   onDeleted?: (id: string) => void;
 }) {
-  const [form, setForm] = useState<FormState>(toFormState(book));
+  const [form, setForm] = useState<FormState>(toFormState(book, seed));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refetching, setRefetching] = useState(false);

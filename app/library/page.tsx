@@ -7,8 +7,10 @@ import BookDetail from "@/components/BookDetail";
 import BookCover from "@/components/BookCover";
 import Modal from "@/components/Modal";
 import SearchFilterBar from "@/components/SearchFilterBar";
+import BarcodeScannerModal from "@/components/BarcodeScannerModal";
 import type { Book } from "@/lib/types";
 import { GENRES, STATUSES, FORMATS, WORLDS, MOODS, isIncomplete } from "@/lib/types";
+import { normalizeIsbn } from "@/lib/isbn";
 
 const STATUS_LABEL: Record<string, string> = {
   to_read: "To Read",
@@ -47,6 +49,10 @@ function LibraryInner() {
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [viewing, setViewing] = useState<{ book: Book; mode: "view" | "edit" } | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanSeed, setScanSeed] = useState<Partial<Book> | null>(null);
+  const [scanLookingUp, setScanLookingUp] = useState(false);
+  const [scanNotice, setScanNotice] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -136,7 +142,44 @@ function LibraryInner() {
 
   function closeAdding() {
     setAdding(false);
+    setScanSeed(null);
+    setScanNotice(null);
     clearDeepLinkParams();
+  }
+
+  // Barcode scan result: an ISBN already on a book in the library opens that
+  // book's card directly; otherwise it's looked up on Google Books to
+  // pre-fill a new Add Book form.
+  async function handleIsbnDetected(rawIsbn: string) {
+    setScanOpen(false);
+    const isbn = normalizeIsbn(rawIsbn);
+
+    const match = (books || []).find((b) => b.isbn && normalizeIsbn(b.isbn) === isbn);
+    if (match) {
+      setViewing({ book: match, mode: "view" });
+      return;
+    }
+
+    setScanLookingUp(true);
+    setScanNotice(null);
+    try {
+      const res = await fetch(`/api/books/lookup-isbn?isbn=${encodeURIComponent(isbn)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Lookup failed");
+      if (data.found) {
+        setScanSeed(data.seed);
+      } else {
+        setScanSeed({ isbn });
+        setScanNotice(
+          "No match found on Google Books for that ISBN — fill in the rest by hand."
+        );
+      }
+      setAdding(true);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setScanLookingUp(false);
+    }
   }
 
   function closeViewing() {
@@ -372,6 +415,14 @@ function LibraryInner() {
               ⚠ Jump to Next Incomplete ({incompleteBooks.length})
             </button>
           )}
+          <button
+            className="btn btn-secondary"
+            onClick={() => setScanOpen(true)}
+            disabled={scanLookingUp}
+            type="button"
+          >
+            {scanLookingUp ? "Looking up…" : "📷 Scan"}
+          </button>
           <button className="btn btn-primary" onClick={() => setAdding(true)}>
             + Add Book
           </button>
@@ -583,8 +634,19 @@ function LibraryInner() {
 
       {adding && (
         <Modal title="Add Book" onClose={closeAdding}>
-          <BookForm book={null} onSaved={handleAdded} onCancel={closeAdding} />
+          <div className="space-y-3">
+            {scanNotice && (
+              <p className="text-sm rounded-md bg-amber-50 text-amber-900 px-3 py-2">
+                {scanNotice}
+              </p>
+            )}
+            <BookForm book={null} seed={scanSeed} onSaved={handleAdded} onCancel={closeAdding} />
+          </div>
         </Modal>
+      )}
+
+      {scanOpen && (
+        <BarcodeScannerModal onDetected={handleIsbnDetected} onClose={() => setScanOpen(false)} />
       )}
 
       {viewing && (

@@ -11,6 +11,7 @@ export interface GoogleVolume {
   thumbnail: string | null;
   isbn13: string | null;
   isbn10: string | null;
+  pageCount: number | null;
 }
 
 async function searchVolumes(q: string, maxResults = 20): Promise<GoogleVolume[]> {
@@ -52,6 +53,7 @@ async function searchVolumes(q: string, maxResults = 20): Promise<GoogleVolume[]
       thumbnail: rawThumb ? rawThumb.replace(/^http:/, "https:") : null,
       isbn13: identifiers.find((i) => i.type === "ISBN_13")?.identifier || null,
       isbn10: identifiers.find((i) => i.type === "ISBN_10")?.identifier || null,
+      pageCount: typeof info.pageCount === "number" ? info.pageCount : null,
     };
   });
 }
@@ -65,6 +67,13 @@ function sanitize(value: string): string {
 
 export async function searchByAuthor(author: string): Promise<GoogleVolume[]> {
   return searchVolumes(`inauthor:"${sanitize(author)}"`, 20);
+}
+
+// ISBN barcode scan lookup — Google's isbn: search operand is an exact
+// identifier match, not a keyword search, so a handful of candidates is
+// plenty and the first result is normally the right one.
+export async function searchByIsbn(isbn: string): Promise<GoogleVolume[]> {
+  return searchVolumes(`isbn:${sanitize(isbn)}`, 5);
 }
 
 export async function searchBlackLibraryCatalog(): Promise<GoogleVolume[]> {
