@@ -100,7 +100,7 @@ export default function DashboardPage() {
       : null;
 
     const stats = {
-      total: list.length,
+      total: list.length - wishlist.length,
       finished: finished.length,
       reading: reading.length,
       toRead: toRead.length,
