@@ -164,7 +164,7 @@ export default function BookDetail({
 
           {current.description && (
             <div>
-              <p className="label">Notes</p>
+              <p className="label">Description</p>
               <p className="text-sm text-stone-700 whitespace-pre-wrap">
                 {current.description}
               </p>
