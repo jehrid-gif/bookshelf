@@ -41,6 +41,7 @@ export const BACKUP_COLUMNS = [
   "updated_at",
   "enrichment_status",
   "enrichment_checked_at",
+  "is_reread",
 ] as const;
 
 export interface NormalizeResult {
@@ -97,6 +98,7 @@ export function normalizeBackupRow(raw: any, index: number): NormalizeResult {
     updated_at: raw.updated_at ?? new Date().toISOString(),
     enrichment_status: raw.enrichment_status ?? null,
     enrichment_checked_at: raw.enrichment_checked_at ?? null,
+    is_reread: raw.is_reread ?? false,
   };
 
   return { row };

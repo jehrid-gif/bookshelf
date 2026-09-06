@@ -73,18 +73,21 @@ export default function BookForm({
   onSaved,
   onCancel,
   onDeleted,
+  onReadAgain,
 }: {
   book?: Book | null;
   seed?: Partial<Book> | null;
   onSaved: (b: Book) => void;
   onCancel: () => void;
   onDeleted?: (id: string) => void;
+  onReadAgain?: (b: Book) => void;
 }) {
   const [form, setForm] = useState<FormState>(toFormState(book, seed));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refetching, setRefetching] = useState(false);
   const [refetchMsg, setRefetchMsg] = useState<string | null>(null);
+  const [rereading, setRereading] = useState(false);
   const isEdit = !!book;
   const allowsCoverType = form.format === "physical" || form.format === "physical+ebook";
 
@@ -175,6 +178,30 @@ export default function BookForm({
       setRefetchMsg(err.message);
     } finally {
       setRefetching(false);
+    }
+  }
+
+  async function handleReadAgain() {
+    if (!book) return;
+    if (
+      !confirm(
+        `Start a new read-through of "${book.title}"? This adds a fresh copy to your Reading list — the original keeps its rating and finish date.`
+      )
+    )
+      return;
+    setRereading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/books/${book.trello_id}/read-again`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to start reread");
+      onReadAgain?.(data as Book);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setRereading(false);
     }
   }
 
@@ -427,14 +454,25 @@ export default function BookForm({
         </div>
 
         <div className="sm:col-span-2 flex flex-wrap gap-5 pt-1">
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={form.owned}
-              onChange={(e) => set("owned", e.target.checked)}
-            />
-            Owned
-          </label>
+          {form.status === "finished" ? (
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={!form.owned}
+                onChange={(e) => set("owned", !e.target.checked)}
+              />
+              No longer Own
+            </label>
+          ) : (
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={form.owned}
+                onChange={(e) => set("owned", e.target.checked)}
+              />
+              Owned
+            </label>
+          )}
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -473,16 +511,26 @@ export default function BookForm({
         </div>
       </div>
 
-      <div className="flex items-center justify-between pt-2">
-        <div>
+      <div className="flex items-center justify-between pt-2 flex-wrap gap-2">
+        <div className="flex gap-2">
           {isEdit && (
             <button
               type="button"
               onClick={handleDelete}
-              disabled={saving}
+              disabled={saving || rereading}
               className="btn btn-danger"
             >
               Delete
+            </button>
+          )}
+          {isEdit && book?.status === "finished" && (
+            <button
+              type="button"
+              onClick={handleReadAgain}
+              disabled={saving || rereading}
+              className="btn btn-secondary"
+            >
+              {rereading ? "Starting…" : "📖 Read Again"}
             </button>
           )}
         </div>

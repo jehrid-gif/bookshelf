@@ -58,7 +58,13 @@ export async function POST(
           { status: 400 }
         );
       }
-      const values = BACKUP_COLUMNS.map((col) => (entry.before as Record<string, unknown>)[col]);
+      // Change Log entries recorded before `is_reread` existed have no such
+      // key in their saved `before` snapshot — default it to false rather
+      // than inserting an explicit NULL into a NOT NULL column.
+      const beforeRow = entry.before as Record<string, unknown>;
+      const values = (BACKUP_COLUMNS as readonly string[]).map((col) =>
+        col === "is_reread" && beforeRow[col] === undefined ? false : beforeRow[col]
+      );
       const placeholders = BACKUP_COLUMNS.map((_, i) => `$${i + 1}`).join(",");
       const restored = await queryOne<Book>(
         `INSERT INTO books (${BACKUP_COLUMNS.join(",")}) VALUES (${placeholders}) RETURNING *`,

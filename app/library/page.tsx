@@ -11,6 +11,7 @@ import BarcodeScannerModal from "@/components/BarcodeScannerModal";
 import type { Book } from "@/lib/types";
 import { GENRES, STATUSES, FORMATS, WORLDS, MOODS, isIncomplete } from "@/lib/types";
 import { normalizeIsbn } from "@/lib/isbn";
+const BookDetailAny = BookDetail as any;
 
 const STATUS_LABEL: Record<string, string> = {
   to_read: "To Read",
@@ -400,6 +401,11 @@ function LibraryInner() {
     closeAdding();
   }
 
+  function handleReadAgain(created: Book) {
+    applySavedBook(created);
+    closeViewing();
+  }
+
   function handleDeleted(id: string) {
     setBooks((prev) => (prev ? prev.filter((b) => b.trello_id !== id) : prev));
     closeViewing();
@@ -650,12 +656,13 @@ function LibraryInner() {
       )}
 
       {viewing && (
-        <BookDetail
+        <BookDetailAny
           book={viewing.book}
           initialMode={viewing.mode}
           onClose={closeViewing}
           onSaved={applySavedBook}
           onDeleted={handleDeleted}
+          onReadAgain={handleReadAgain}
         />
       )}
     </div>
