@@ -11,6 +11,7 @@ import BarcodeScannerModal from "@/components/BarcodeScannerModal";
 import type { Book } from "@/lib/types";
 import { GENRES, STATUSES, FORMATS, WORLDS, MOODS, isIncomplete } from "@/lib/types";
 import { normalizeIsbn } from "@/lib/isbn";
+const BookDetailAny = BookDetail as any;
 
 const STATUS_LABEL: Record<string, string> = {
   to_read: "To Read",
@@ -655,7 +656,7 @@ function LibraryInner() {
       )}
 
       {viewing && (
-        <BookDetail
+        <BookDetailAny
           book={viewing.book}
           initialMode={viewing.mode}
           onClose={closeViewing}
