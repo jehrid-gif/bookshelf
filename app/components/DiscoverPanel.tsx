@@ -12,6 +12,8 @@ import SidePanel from "./SidePanel";
 import BookDetail from "./BookDetail";
 import BookCover from "./BookCover";
 
+const BookDetailAny = BookDetail as any;
+
 const SUGGESTION_COUNT = 3;
 
 function shuffle<T>(arr: T[]): T[] {
@@ -313,7 +315,7 @@ export default function DiscoverPanel({
       )}
 
       {viewing && (
-        <BookDetail
+        <BookDetailAny
           book={viewing}
           onClose={() => setViewing(null)}
           onSaved={(b) => {
