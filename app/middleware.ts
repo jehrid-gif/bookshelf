@@ -12,7 +12,10 @@ export async function middleware(req: NextRequest) {
   // Next.js from invoking middleware for this path, so bypass it here in
   // plain code instead. Remove this block together with the /diag-check
   // page once the mystery is resolved.
-  if (req.nextUrl.pathname === "/diag-check" || req.nextUrl.pathname.startsWith("/diag-check/")) {
+  if (
+    req.nextUrl.pathname === "/app/diag-check" ||
+    req.nextUrl.pathname.startsWith("/app/diag-check/")
+  ) {
     return NextResponse.next();
   }
 
