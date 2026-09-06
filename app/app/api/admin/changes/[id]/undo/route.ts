@@ -62,7 +62,7 @@ export async function POST(
       // key in their saved `before` snapshot — default it to false rather
       // than inserting an explicit NULL into a NOT NULL column.
       const beforeRow = entry.before as Record<string, unknown>;
-      const values = BACKUP_COLUMNS.map((col) =>
+      const values = (BACKUP_COLUMNS as readonly string[]).map((col) =>
         col === "is_reread" && beforeRow[col] === undefined ? false : beforeRow[col]
       );
       const placeholders = BACKUP_COLUMNS.map((_, i) => `$${i + 1}`).join(",");
