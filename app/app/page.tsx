@@ -155,7 +155,7 @@ export default function DashboardPage() {
     // not a new acquisition — they're excluded from inventory-style counts
     // (Total Books, Owned, Completion by Format) but still show up under
     // Reading/Finished since that's a real reading activity.
-    const nonRereadList = list.filter((b) => !b.is_reread);
+    const nonRereadList = list.filter((b) => !(b as any).is_reread);
     const toRead = list.filter((b) => b.status === "to_read");
     const reading = list.filter((b) => b.status === "reading");
     const incomplete = list.filter(isIncomplete);
