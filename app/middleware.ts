@@ -8,6 +8,14 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // TEMPORARY — the matcher's regex exclusion below hasn't reliably kept
+  // Next.js from invoking middleware for this path, so bypass it here in
+  // plain code instead. Remove this block together with the /diag-check
+  // page once the mystery is resolved.
+  if (req.nextUrl.pathname === "/diag-check" || req.nextUrl.pathname.startsWith("/diag-check/")) {
+    return NextResponse.next();
+  }
+
   const expected = await expectedAuthToken();
   const token = req.cookies.get(AUTH_COOKIE)?.value;
   const authed = !!expected && token === expected;
