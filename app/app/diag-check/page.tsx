@@ -54,7 +54,8 @@ export default function DiagCheckPage() {
       <h1>DIAG-CHECK-MARKER-V1</h1>
       <p data-diag="backup-columns-length">BACKUP_COLUMNS length: {BACKUP_COLUMNS.length}</p>
       <p data-diag="has-is-reread-column">
-        Has is_reread column: {BACKUP_COLUMNS.includes("is_reread") ? "YES" : "NO"}
+        Has is_reread column:{" "}
+        {(BACKUP_COLUMNS as readonly string[]).includes("is_reread") ? "YES" : "NO"}
       </p>
       <p data-diag="has-is-reread-type">
         Book type has is_reread field: {"is_reread" in mockBook ? "YES" : "NO"}
