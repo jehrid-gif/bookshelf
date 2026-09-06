@@ -15,6 +15,7 @@ import BookDetail from "@/components/BookDetail";
 import BookForm from "@/components/BookForm";
 import Modal from "@/components/Modal";
 import { normalizeIsbn } from "@/lib/isbn";
+const BookDetailAny = BookDetail as any;
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -448,7 +449,7 @@ export default function DashboardPage() {
       )}
 
       {viewingBook && (
-        <BookDetail
+        <BookDetailAny
           book={viewingBook}
           onClose={() => setViewingBook(null)}
           onSaved={(b) => {
