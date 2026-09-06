@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { AUTH_COOKIE, expectedAuthToken } from "@/lib/auth";
 
 export async function middleware(req: NextRequest) {
+  // TEMPORARY diagnostic — bypass everything unconditionally to determine
+  // whether a stubborn redirect is coming from this middleware at all.
+  // Remove this block immediately after the test.
+  return NextResponse.next();
+
   // Vercel Cron hits this with its own bearer-token auth, not the login
   // cookie — the route itself checks CRON_SECRET.
   if (req.nextUrl.pathname.startsWith("/api/cron/")) {
