@@ -94,12 +94,13 @@ export interface Book {
   enrichment_status: "matched" | "low_confidence" | "not_found" | "error" | null;
   enrichment_checked_at: string | null;
   board_pos: number;
+  is_reread: boolean;
   created_at: string;
   updated_at: string;
 }
 
 export type BookInput = Partial<
-  Omit<Book, "trello_id" | "created_at" | "updated_at" | "length_category">
+  Omit<Book, "trello_id" | "created_at" | "updated_at" | "length_category" | "is_reread">
 > & { title: string };
 
 export function isIncomplete(b: Book): boolean {
@@ -111,6 +112,8 @@ export function isIncomplete(b: Book): boolean {
   // hardcover/softcover to record, so it's never flagged for lacking one.
   const hasPhysicalCopy = b.format === "physical" || b.format === "physical+ebook";
   if (hasPhysicalCopy && b.cover_type === null) return true;
+  // A finished book isn't "done" in our records until it's been rated.
+  if (b.status === "finished" && b.my_rating === null) return true;
   return false;
 }
 

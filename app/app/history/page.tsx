@@ -34,7 +34,7 @@ const FIELD_LABELS: Record<string, string> = {
   date_added: "Date Added",
   date_started: "Date Started",
   date_finished: "Date Finished",
-  description: "Notes",
+  description: "Description",
   cover_url: "Cover Image",
   isbn: "ISBN",
 };

@@ -67,6 +67,11 @@ export default function DashboardPage() {
     closeAdding();
   }
 
+  function handleReadAgain(created: Book) {
+    setBooks((prev) => (prev ? [created, ...prev] : [created]));
+    setViewingBook(null);
+  }
+
   // Barcode scan result: an ISBN already on a book in the library opens that
   // book's card directly; otherwise it's looked up on Google Books to
   // pre-fill a new Add Book form.
@@ -145,12 +150,17 @@ export default function DashboardPage() {
 
   const derived = useMemo(() => {
     const list = books || [];
+    // Reread copies represent the same physical/owned book being read again,
+    // not a new acquisition — they're excluded from inventory-style counts
+    // (Total Books, Owned, Completion by Format) but still show up under
+    // Reading/Finished since that's a real reading activity.
+    const nonRereadList = list.filter((b) => !b.is_reread);
     const toRead = list.filter((b) => b.status === "to_read");
     const reading = list.filter((b) => b.status === "reading");
     const incomplete = list.filter(isIncomplete);
     const uncheckedForCovers = list.filter((b) => !b.enrichment_status).length;
     const finished = list.filter((b) => b.status === "finished");
-    const owned = list.filter((b) => b.owned);
+    const owned = nonRereadList.filter((b) => b.owned);
     const wishlist = list.filter((b) => b.status === "wishlist");
 
     const currentYear = new Date().getFullYear();
@@ -164,7 +174,7 @@ export default function DashboardPage() {
       : null;
 
     const stats = {
-      total: list.length - wishlist.length,
+      total: nonRereadList.length - wishlist.length,
       finished: finished.length,
       reading: reading.length,
       toRead: toRead.length,
@@ -175,12 +185,16 @@ export default function DashboardPage() {
       const done = sub.filter((b) => b.status === "finished").length;
       return { done, total: sub.length, percent: sub.length ? Math.round((done / sub.length) * 100) : 0 };
     }
-    const physical = list.filter((b) => b.format === "physical" || b.format === "physical+ebook");
-    const digital = list.filter((b) => b.format === "ebook" || b.format === "physical+ebook");
+    const physical = nonRereadList.filter(
+      (b) => b.format === "physical" || b.format === "physical+ebook"
+    );
+    const digital = nonRereadList.filter(
+      (b) => b.format === "ebook" || b.format === "physical+ebook"
+    );
     const formatBreakdown = [
       { label: "Physical", ...pct(physical) },
       { label: "Digital", ...pct(digital) },
-      { label: "All Books", ...pct(list) },
+      { label: "All Books", ...pct(nonRereadList) },
     ];
 
     return {
@@ -221,9 +235,27 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-xl font-bold text-ink">Dashboard</h1>
-        <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3 flex-wrap">
+        <h1 className="text-xl font-bold text-ink shrink-0">Dashboard</h1>
+
+        {derived.incomplete.length > 0 && (
+          <Link
+            href="/library?incomplete=1"
+            className="flex-1 min-w-[160px] order-3 sm:order-none rounded-md border-2 border-amber-500 bg-amber-200 hover:bg-amber-300 transition-colors px-3 py-1.5"
+          >
+            <p className="text-amber-950 font-bold text-sm text-center sm:text-left">
+              <span className="hidden sm:inline">
+                ⚠️ {derived.incomplete.length} book{derived.incomplete.length === 1 ? "" : "s"} missing
+                data — click to fill in the next one
+              </span>
+              <span className="sm:hidden">
+                ⚠️ {derived.incomplete.length} missing data
+              </span>
+            </p>
+          </Link>
+        )}
+
+        <div className="flex items-center gap-2 shrink-0 ml-auto">
           <button
             className="btn btn-secondary"
             onClick={() => setScanOpen(true)}
@@ -238,51 +270,60 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <StatTile label="Total Books" value={derived.stats.total} onClick={() => router.push("/library")} />
-        <StatTile
-          label="Finished"
-          value={derived.stats.finished}
-          onClick={() => router.push("/library?status=finished")}
-        />
-        <StatTile label="Reading" value={derived.stats.reading} onClick={() => setReadingOpen(true)} />
-        <StatTile
-          label="To Read"
-          value={derived.stats.toRead}
-          onClick={() => router.push("/library?status=to_read")}
-        />
-        <StatTile
-          label="Wishlist"
-          value={derived.stats.wishlist}
-          onClick={() => router.push("/library?status=wishlist")}
-        />
-      </div>
+      <div className="rounded-lg border border-stone-200 shadow-sm bg-surface overflow-hidden">
+        <div className="grid grid-cols-2 sm:grid-cols-5">
+          <StatTile label="Total Books" value={derived.stats.total} onClick={() => router.push("/library")} />
+          <StatTile
+            label="Finished"
+            value={derived.stats.finished}
+            onClick={() => router.push("/library?status=finished")}
+          />
+          <StatTile label="Reading" value={derived.stats.reading} onClick={() => setReadingOpen(true)} />
+          <StatTile
+            label="To Read"
+            value={derived.stats.toRead}
+            onClick={() => router.push("/library?status=to_read")}
+          />
+          <StatTile
+            label="Wishlist"
+            value={derived.stats.wishlist}
+            onClick={() => router.push("/library?status=wishlist")}
+          />
+        </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 border border-stone-200 rounded-lg overflow-hidden bg-surface">
-        <LedgerCell value={derived.owned.length} label="Owned" />
-        <LedgerCell
-          value={derived.finishedThisYear.length}
-          label={`Finished ${derived.currentYear}`}
-          href={`/year-in-review?year=${derived.currentYear}`}
-        />
-        <LedgerCell value={derived.pagesThisYear.toLocaleString()} label={`Pages ${derived.currentYear}`} />
-        <LedgerCell
-          value={derived.avgRating ? `${derived.avgRating.toFixed(1)}★` : "—"}
-          label="Avg Rating"
-        />
-      </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 border-t border-stone-200">
+          <LedgerCell value={derived.owned.length} label="Owned" />
+          <LedgerCell
+            value={derived.finishedThisYear.length}
+            label={`Finished ${derived.currentYear}`}
+            href={`/year-in-review?year=${derived.currentYear}`}
+          />
+          <LedgerCell value={derived.pagesThisYear.toLocaleString()} label={`Pages ${derived.currentYear}`} />
+          <LedgerCell
+            value={derived.avgRating ? `${derived.avgRating.toFixed(1)}★` : "—"}
+            label="Avg Rating"
+          />
+        </div>
 
-      {derived.incomplete.length > 0 && (
-        <Link
-          href="/library?incomplete=1"
-          className="block card border-amber-300 bg-amber-50 hover:bg-amber-100 transition-colors"
-        >
-          <p className="text-amber-900 font-medium">
-            ⚠️ {derived.incomplete.length} book{derived.incomplete.length === 1 ? "" : "s"} missing
-            data — click to fill in the next one
-          </p>
-        </Link>
-      )}
+        <div className="border-t border-stone-200 p-4">
+          <h2 className="font-semibold text-ink mb-3">📚 Completion by Format</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {derived.formatBreakdown.map((f) => (
+              <div key={f.label}>
+                <div className="flex items-baseline justify-between mb-1">
+                  <p className="text-sm font-medium text-ink">{f.label}</p>
+                  <p className="text-xs text-stone-500">
+                    {f.percent}% · {f.done}/{f.total}
+                  </p>
+                </div>
+                <div className="h-2 rounded-full bg-stone-100 overflow-hidden">
+                  <div className="h-full bg-brass rounded-full" style={{ width: `${f.percent}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
 
       {derived.uncheckedForCovers > 0 && (
         <Link
@@ -296,25 +337,6 @@ export default function DashboardPage() {
           </p>
         </Link>
       )}
-
-      <div className="card">
-        <h2 className="font-semibold text-ink mb-3">📚 Completion by Format</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {derived.formatBreakdown.map((f) => (
-            <div key={f.label}>
-              <div className="flex items-baseline justify-between mb-1">
-                <p className="text-sm font-medium text-ink">{f.label}</p>
-                <p className="text-xs text-stone-500">
-                  {f.percent}% · {f.done}/{f.total}
-                </p>
-              </div>
-              <div className="h-2 rounded-full bg-stone-100 overflow-hidden">
-                <div className="h-full bg-brass rounded-full" style={{ width: `${f.percent}%` }} />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
 
       <div className="space-y-3">
         <h2 className="font-semibold text-ink font-display">📋 Board</h2>
@@ -404,6 +426,7 @@ export default function DashboardPage() {
           onClose={() => setDiscoverOpen(false)}
           onBookUpdated={applySavedBook}
           onBookDeleted={handleDeleted}
+          onBookAdded={handleReadAgain}
         />
       )}
 
@@ -433,6 +456,7 @@ export default function DashboardPage() {
             setViewingBook(b);
           }}
           onDeleted={handleDeleted}
+          onReadAgain={handleReadAgain}
         />
       )}
     </div>
@@ -444,7 +468,7 @@ function StatTile({ label, value, onClick }: { label: string; value: number; onC
     <button
       type="button"
       onClick={onClick}
-      className="card text-center hover:bg-parchment/60 transition-colors w-full"
+      className="text-center hover:bg-parchment/60 transition-colors w-full px-3 py-4 border-r border-b sm:border-b-0 border-stone-200 last:border-r-0"
     >
       <p className="text-2xl font-bold text-ink">{value}</p>
       <p className="text-xs uppercase tracking-wide text-stone-500">{label}</p>

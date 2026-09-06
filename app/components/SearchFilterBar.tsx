@@ -34,12 +34,24 @@ export default function SearchFilterBar({
   return (
     <div className="card space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
-        <input
-          className="input flex-1 min-w-[180px]"
-          placeholder={placeholder}
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-        />
+        <div className="relative flex-1 min-w-[180px]">
+          <input
+            className="input w-full pr-8"
+            placeholder={placeholder}
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+          />
+          {search && (
+            <button
+              type="button"
+              aria-label="Clear search"
+              onClick={() => onSearchChange("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 leading-none text-base"
+            >
+              ×
+            </button>
+          )}
+        </div>
         {children && (
           <button
             type="button"

@@ -400,6 +400,11 @@ function LibraryInner() {
     closeAdding();
   }
 
+  function handleReadAgain(created: Book) {
+    applySavedBook(created);
+    closeViewing();
+  }
+
   function handleDeleted(id: string) {
     setBooks((prev) => (prev ? prev.filter((b) => b.trello_id !== id) : prev));
     closeViewing();
@@ -656,6 +661,7 @@ function LibraryInner() {
           onClose={closeViewing}
           onSaved={applySavedBook}
           onDeleted={handleDeleted}
+          onReadAgain={handleReadAgain}
         />
       )}
     </div>

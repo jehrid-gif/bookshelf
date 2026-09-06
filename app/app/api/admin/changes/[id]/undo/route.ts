@@ -58,7 +58,13 @@ export async function POST(
           { status: 400 }
         );
       }
-      const values = BACKUP_COLUMNS.map((col) => (entry.before as Record<string, unknown>)[col]);
+      // Change Log entries recorded before `is_reread` existed have no such
+      // key in their saved `before` snapshot — default it to false rather
+      // than inserting an explicit NULL into a NOT NULL column.
+      const beforeRow = entry.before as Record<string, unknown>;
+      const values = BACKUP_COLUMNS.map((col) =>
+        col === "is_reread" && beforeRow[col] === undefined ? false : beforeRow[col]
+      );
       const placeholders = BACKUP_COLUMNS.map((_, i) => `$${i + 1}`).join(",");
       const restored = await queryOne<Book>(
         `INSERT INTO books (${BACKUP_COLUMNS.join(",")}) VALUES (${placeholders}) RETURNING *`,
@@ -79,7 +85,13 @@ export async function POST(
           { status: 400 }
         );
       }
-      const fields = entry.changed_fields || [];
+      // length_category is a GENERATED ALWAYS column (derived from `pages`
+      // by Postgres) — it can never be set explicitly, only recomputed as a
+      // side effect of restoring `pages`. Newer log entries never record it
+      // as a changed field to begin with, but this filters it out
+      // defensively too, so entries logged before that fix can still be
+      // undone instead of failing on the same generated-column error.
+      const fields = (entry.changed_fields || []).filter((f) => f !== "length_category");
       if (fields.length === 0 || !entry.before) {
         return NextResponse.json(
           { error: "This entry has nothing restorable on it." },

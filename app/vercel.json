@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/weekly-export",
       "schedule": "0 13 * * 1"
+    },
+    {
+      "path": "/api/cron/weekly-backup",
+      "schedule": "10 13 * * 1"
     }
   ]
 }

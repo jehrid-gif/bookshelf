@@ -10,6 +10,7 @@ import {
 } from "@/lib/readNext";
 import SidePanel from "./SidePanel";
 import BookDetail from "./BookDetail";
+import BookCover from "./BookCover";
 
 const SUGGESTION_COUNT = 3;
 
@@ -27,11 +28,13 @@ export default function DiscoverPanel({
   onClose,
   onBookUpdated,
   onBookDeleted,
+  onBookAdded,
 }: {
   books: Book[];
   onClose: () => void;
   onBookUpdated: (b: Book) => void;
   onBookDeleted: (id: string) => void;
+  onBookAdded?: (b: Book) => void;
 }) {
   const [tab, setTab] = useState<"next" | "suggestions" | "dice">("next");
   const [viewing, setViewing] = useState<Book | null>(null);
@@ -141,15 +144,24 @@ export default function DiscoverPanel({
           )}
           <ul className="space-y-3">
             {readNext.map((entry) => (
-              <li key={entry.series} className="border-b border-stone-100 pb-3 last:border-0">
-                <button
-                  onClick={() => setViewing(entry.book)}
-                  type="button"
-                  className="font-medium text-ink hover:text-brass hover:underline text-left block"
-                >
-                  {entry.book.title}
-                </button>
-                <p className="text-xs text-stone-500">{entry.reason}</p>
+              <li key={entry.series} className="border-b border-stone-100 pb-3 last:border-0 flex gap-3">
+                <BookCover
+                  book={entry.book}
+                  className="w-10 h-14 flex-none"
+                  padding="p-1"
+                  textSize="text-[6px]"
+                  lineClamp="line-clamp-4"
+                />
+                <div className="min-w-0">
+                  <button
+                    onClick={() => setViewing(entry.book)}
+                    type="button"
+                    className="font-medium text-ink hover:text-brass hover:underline text-left block"
+                  >
+                    {entry.book.title}
+                  </button>
+                  <p className="text-xs text-stone-500">{entry.reason}</p>
+                </div>
               </li>
             ))}
           </ul>
@@ -218,18 +230,27 @@ export default function DiscoverPanel({
           )}
           <ul className="space-y-3">
             {suggShown.map((entry) => (
-              <li key={entry.book.trello_id} className="border-b border-stone-100 pb-3 last:border-0">
-                <button
-                  onClick={() => setViewing(entry.book)}
-                  type="button"
-                  className="font-medium text-ink hover:text-brass hover:underline text-left block"
-                >
-                  {entry.book.title}
-                </button>
-                {entry.book.author && (
-                  <p className="text-xs text-stone-500">{entry.book.author}</p>
-                )}
-                <p className="text-xs text-stone-500">{entry.reason}</p>
+              <li key={entry.book.trello_id} className="border-b border-stone-100 pb-3 last:border-0 flex gap-3">
+                <BookCover
+                  book={entry.book}
+                  className="w-10 h-14 flex-none"
+                  padding="p-1"
+                  textSize="text-[6px]"
+                  lineClamp="line-clamp-4"
+                />
+                <div className="min-w-0">
+                  <button
+                    onClick={() => setViewing(entry.book)}
+                    type="button"
+                    className="font-medium text-ink hover:text-brass hover:underline text-left block"
+                  >
+                    {entry.book.title}
+                  </button>
+                  {entry.book.author && (
+                    <p className="text-xs text-stone-500">{entry.book.author}</p>
+                  )}
+                  <p className="text-xs text-stone-500">{entry.reason}</p>
+                </div>
               </li>
             ))}
           </ul>
@@ -267,16 +288,25 @@ export default function DiscoverPanel({
             <button
               onClick={() => setViewing(pick)}
               type="button"
-              className="block w-full text-left mt-1 rounded-md bg-parchment/60 border border-stone-200 px-3 py-2 hover:border-stone-300 transition-colors"
+              className="flex gap-3 w-full text-left mt-1 rounded-md bg-parchment/60 border border-stone-200 px-3 py-2 hover:border-stone-300 transition-colors"
             >
-              <p className="font-medium text-ink">{pick.title}</p>
-              {pick.author && <p className="text-sm text-stone-600">{pick.author}</p>}
-              {pick.series && (
-                <p className="text-xs text-stone-500">
-                  {pick.series}
-                  {pick.series_index ? ` #${pick.series_index}` : ""}
-                </p>
-              )}
+              <BookCover
+                book={pick}
+                className="w-12 h-16 flex-none"
+                padding="p-1"
+                textSize="text-[7px]"
+                lineClamp="line-clamp-4"
+              />
+              <div className="min-w-0">
+                <p className="font-medium text-ink">{pick.title}</p>
+                {pick.author && <p className="text-sm text-stone-600">{pick.author}</p>}
+                {pick.series && (
+                  <p className="text-xs text-stone-500">
+                    {pick.series}
+                    {pick.series_index ? ` #${pick.series_index}` : ""}
+                  </p>
+                )}
+              </div>
             </button>
           )}
         </div>
@@ -296,6 +326,13 @@ export default function DiscoverPanel({
             setViewing(null);
             if (pick && pick.trello_id === id) setPick(null);
           }}
+          onReadAgain={
+            onBookAdded &&
+            ((b) => {
+              onBookAdded(b);
+              setViewing(null);
+            })
+          }
         />
       )}
     </SidePanel>

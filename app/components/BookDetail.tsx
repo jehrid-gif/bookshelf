@@ -19,12 +19,14 @@ export default function BookDetail({
   onClose,
   onSaved,
   onDeleted,
+  onReadAgain,
 }: {
   book: Book;
   initialMode?: "view" | "edit";
   onClose: () => void;
   onSaved: (b: Book) => void;
   onDeleted: (id: string) => void;
+  onReadAgain?: (b: Book) => void;
 }) {
   const [mode, setMode] = useState<"view" | "edit">(initialMode);
   const [current, setCurrent] = useState<Book>(book);
@@ -60,6 +62,13 @@ export default function BookDetail({
           }}
           onCancel={() => setMode("view")}
           onDeleted={onDeleted}
+          onReadAgain={
+            onReadAgain &&
+            ((b) => {
+              onReadAgain(b);
+              onClose();
+            })
+          }
         />
       ) : (
         <div className="space-y-4">
@@ -164,7 +173,7 @@ export default function BookDetail({
 
           {current.description && (
             <div>
-              <p className="label">Notes</p>
+              <p className="label">Description</p>
               <p className="text-sm text-stone-700 whitespace-pre-wrap">
                 {current.description}
               </p>
