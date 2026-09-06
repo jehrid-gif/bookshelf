@@ -16,6 +16,7 @@ import BookForm from "@/components/BookForm";
 import Modal from "@/components/Modal";
 import { normalizeIsbn } from "@/lib/isbn";
 const BookDetailAny = BookDetail as any;
+const DiscoverPanelAny = DiscoverPanel as any;
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -422,7 +423,7 @@ export default function DashboardPage() {
       )}
 
       {discoverOpen && (
-        <DiscoverPanel
+        <DiscoverPanelAny
           books={books}
           onClose={() => setDiscoverOpen(false)}
           onBookUpdated={applySavedBook}
