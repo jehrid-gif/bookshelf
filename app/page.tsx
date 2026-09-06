@@ -162,8 +162,13 @@ export default function DashboardPage() {
     const incomplete = list.filter(isIncomplete);
     const uncheckedForCovers = list.filter((b) => !b.enrichment_status).length;
     const finished = list.filter((b) => b.status === "finished");
-    const owned = nonRereadList.filter((b) => b.owned);
     const wishlist = list.filter((b) => b.status === "wishlist");
+    // Wishlist entries aren't owned yet, so they're excluded from every
+    // inventory-style count below the same way rereads are — Total Books,
+    // Owned, and every row of Completion by Format all share this one base
+    // population instead of each re-deriving it (and disagreeing) separately.
+    const trackedList = nonRereadList.filter((b) => b.status !== "wishlist");
+    const owned = trackedList.filter((b) => b.owned);
 
     const currentYear = new Date().getFullYear();
     const finishedThisYear = finished.filter(
@@ -176,7 +181,7 @@ export default function DashboardPage() {
       : null;
 
     const stats = {
-      total: nonRereadList.length - wishlist.length,
+      total: trackedList.length,
       finished: finished.length,
       reading: reading.length,
       toRead: toRead.length,
@@ -187,16 +192,16 @@ export default function DashboardPage() {
       const done = sub.filter((b) => b.status === "finished").length;
       return { done, total: sub.length, percent: sub.length ? Math.round((done / sub.length) * 100) : 0 };
     }
-    const physical = nonRereadList.filter(
+    const physical = trackedList.filter(
       (b) => b.format === "physical" || b.format === "physical+ebook"
     );
-    const digital = nonRereadList.filter(
+    const digital = trackedList.filter(
       (b) => b.format === "ebook" || b.format === "physical+ebook"
     );
     const formatBreakdown = [
       { label: "Physical", ...pct(physical) },
       { label: "Digital", ...pct(digital) },
-      { label: "All Books", ...pct(nonRereadList) },
+      { label: "All Books", ...pct(trackedList) },
     ];
 
     return {
