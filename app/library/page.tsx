@@ -71,6 +71,7 @@ function LibraryInner() {
   const [duplicatesOnly, setDuplicatesOnly] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [view, setView] = useState<"table" | "shelf">("table");
   const [enriching, setEnriching] = useState(false);
   const [enrichProgress, setEnrichProgress] = useState<{ done: number; total: number } | null>(
     null
@@ -417,6 +418,28 @@ function LibraryInner() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-xl font-bold text-ink">Library</h1>
         <div className="flex items-center gap-2">
+          <div className="flex rounded-md border border-stone-200 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setView("table")}
+              className={
+                "px-3 py-1.5 text-sm " +
+                (view === "table" ? "bg-brass text-white" : "bg-surface text-stone-600 hover:bg-parchment/60")
+              }
+            >
+              📋 Table
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("shelf")}
+              className={
+                "px-3 py-1.5 text-sm border-l border-stone-200 " +
+                (view === "shelf" ? "bg-brass text-white" : "bg-surface text-stone-600 hover:bg-parchment/60")
+              }
+            >
+              🖼️ Shelf
+            </button>
+          </div>
           {incompleteBooks.length > 0 && (
             <button className="btn btn-secondary" onClick={jumpToIncomplete}>
               ⚠ Jump to Next Incomplete ({incompleteBooks.length})
@@ -577,7 +600,43 @@ function LibraryInner() {
         </div>
       )}
 
-      {books && (
+      {books && view === "shelf" && (
+        <div className="card">
+          <div className="grid grid-cols-3 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-3">
+            {filtered.map((b) => (
+              <button
+                key={b.trello_id}
+                type="button"
+                onClick={() => setViewing({ book: b, mode: "view" })}
+                className="group text-left"
+                title={b.author ? `${b.title} — ${b.author}` : b.title}
+              >
+                <div className="relative">
+                  <BookCover book={b} className="w-full h-32 sm:h-36" />
+                  {isIncomplete(b) && (
+                    <span
+                      className="absolute -top-1 -right-1 text-xs"
+                      title="Missing genre, page count, or (for a physical copy) cover type"
+                    >
+                      ⚠️
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-stone-600 mt-1 line-clamp-2 group-hover:text-ink transition-colors">
+                  {b.title}
+                </p>
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <p className="text-stone-400 col-span-full text-center py-6">
+                No books match these filters.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {books && view === "table" && (
         <div className="card !p-0 overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-stone-50 text-stone-500 text-xs uppercase tracking-wide">

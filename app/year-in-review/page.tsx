@@ -32,6 +32,7 @@ interface YearStats {
   total: number;
   pages: number;
   avgRating: number | null;
+  avgDaysToFinish: number | null;
   genreCounts: Record<string, number>;
   topGenre: string | null;
 }
@@ -51,6 +52,18 @@ function buildYearStats(books: Book[]): YearStats[] {
       const avgRating = rated.length
         ? rated.reduce((sum, b) => sum + (b.my_rating || 0), 0) / rated.length
         : null;
+      const timed = yearBooks.filter((b) => b.date_started && b.date_finished);
+      const avgDaysToFinish = timed.length
+        ? Math.round(
+            timed.reduce(
+              (sum, b) =>
+                sum +
+                (new Date(b.date_finished!).getTime() - new Date(b.date_started!).getTime()) /
+                  86400000,
+              0
+            ) / timed.length
+          )
+        : null;
       const genreCounts: Record<string, number> = {};
       for (const b of yearBooks) {
         const g = b.genre || "Unclassified";
@@ -58,9 +71,58 @@ function buildYearStats(books: Book[]): YearStats[] {
       }
       const topGenre =
         Object.entries(genreCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
-      return { year, books: yearBooks, total: yearBooks.length, pages, avgRating, genreCounts, topGenre };
+      return {
+        year,
+        books: yearBooks,
+        total: yearBooks.length,
+        pages,
+        avgRating,
+        avgDaysToFinish,
+        genreCounts,
+        topGenre,
+      };
     })
     .sort((a, b) => Number(b.year) - Number(a.year));
+}
+
+interface RatingBreakdown {
+  name: string;
+  avg: number;
+  count: number;
+}
+
+// Only genres/authors with at least 2 rated books get ranked — a single
+// 5-star fluke shouldn't crown someone's "best author of all time."
+function buildRatingBreakdowns(books: Book[]): {
+  byGenre: RatingBreakdown[];
+  byAuthor: RatingBreakdown[];
+} {
+  const rated = books.filter(
+    (b) => b.status === "finished" && typeof b.my_rating === "number" && !b.is_reread
+  );
+
+  function rank(keyFn: (b: Book) => string | null): RatingBreakdown[] {
+    const buckets = new Map<string, number[]>();
+    for (const b of rated) {
+      const key = keyFn(b);
+      if (!key) continue;
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key)!.push(b.my_rating!);
+    }
+    return Array.from(buckets.entries())
+      .filter(([, ratings]) => ratings.length >= 2)
+      .map(([name, ratings]) => ({
+        name,
+        avg: ratings.reduce((a, b) => a + b, 0) / ratings.length,
+        count: ratings.length,
+      }))
+      .sort((a, b) => b.avg - a.avg || b.count - a.count);
+  }
+
+  return {
+    byGenre: rank((b) => b.genre),
+    byAuthor: rank((b) => b.author),
+  };
 }
 
 function YearInReviewInner() {
@@ -78,6 +140,10 @@ function YearInReviewInner() {
   }, []);
 
   const yearStats = useMemo(() => (books ? buildYearStats(books) : []), [books]);
+  const { byGenre, byAuthor } = useMemo(
+    () => buildRatingBreakdowns(books || []),
+    [books]
+  );
 
   const selectedYear = searchParams.get("year");
   const selected = yearStats.find((y) => y.year === selectedYear) || null;
@@ -125,7 +191,7 @@ function YearInReviewInner() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <div className="card text-center">
             <p className="text-2xl font-bold text-ink">{selected.total}</p>
             <p className="text-xs uppercase tracking-wide text-stone-500">Books Read</p>
@@ -139,6 +205,12 @@ function YearInReviewInner() {
               {selected.avgRating ? `${selected.avgRating.toFixed(1)}★` : "—"}
             </p>
             <p className="text-xs uppercase tracking-wide text-stone-500">Avg Rating</p>
+          </div>
+          <div className="card text-center">
+            <p className="text-2xl font-bold text-ink">
+              {selected.avgDaysToFinish ?? "—"}
+            </p>
+            <p className="text-xs uppercase tracking-wide text-stone-500">Avg Days to Finish</p>
           </div>
           <div className="card text-center">
             <p className="text-lg font-bold text-ink leading-tight mt-1">
@@ -257,6 +329,69 @@ function YearInReviewInner() {
           </p>
         )}
       </div>
+
+      {(byGenre.length > 0 || byAuthor.length > 0) && (
+        <div className="grid sm:grid-cols-2 gap-3">
+          {byGenre.length > 0 && (
+            <div className="card">
+              <h2 className="font-semibold text-ink mb-1">Genres, by Avg Rating</h2>
+              <p className="text-xs text-stone-500 mb-3">
+                Genres with at least 2 rated books, best first.
+              </p>
+              <ul className="space-y-1.5">
+                {byGenre.map((g) => (
+                  <li
+                    key={g.name}
+                    className="flex items-center justify-between gap-2 text-sm"
+                  >
+                    <span className="flex items-center gap-1.5 min-w-0">
+                      <span
+                        className="inline-block w-2.5 h-2.5 rounded-sm flex-none"
+                        style={{ background: colorFor(g.name) }}
+                      />
+                      <span className="text-ink truncate">{g.name}</span>
+                      <span className="text-stone-400 flex-none text-xs">
+                        ({g.count})
+                      </span>
+                    </span>
+                    <span className="text-amber-600 flex-none text-xs font-medium">
+                      {g.avg.toFixed(1)}★
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {byAuthor.length > 0 && (
+            <div className="card">
+              <h2 className="font-semibold text-ink mb-1">Authors, by Avg Rating</h2>
+              <p className="text-xs text-stone-500 mb-3">
+                Authors with at least 2 rated books, best first.
+              </p>
+              <ul className="space-y-1.5">
+                {byAuthor.slice(0, 10).map((a) => (
+                  <li
+                    key={a.name}
+                    className="flex items-center justify-between gap-2 text-sm"
+                  >
+                    <span className="text-ink truncate">
+                      {a.name}
+                      <span className="text-stone-400 text-xs">
+                        {" "}
+                        ({a.count})
+                      </span>
+                    </span>
+                    <span className="text-amber-600 flex-none text-xs font-medium">
+                      {a.avg.toFixed(1)}★
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

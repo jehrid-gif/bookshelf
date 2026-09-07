@@ -35,14 +35,19 @@ export async function POST(
     const boardPos = (minPos?.min ?? 0) - 1000;
     const now = new Date().toISOString();
 
+    // If you hit "Read Again" on a reread copy rather than the true
+    // original, chain the new copy to the same root instead of nesting —
+    // keeps the whole read history a flat list under one id.
+    const rootId = original.original_id || original.trello_id;
+
     const created = await queryOne<Book>(
       `INSERT INTO books (
         trello_id, title, author, genre, series, series_index, series_position,
         pages, status, owned, format, cover_type, special_edition, my_rating,
         moods, worlds, priority, date_added, date_started, date_finished,
-        description, cover_url, isbn, board_pos, is_reread
+        description, cover_url, isbn, board_pos, is_reread, original_id
       ) VALUES (
-        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26
       ) RETURNING *`,
       [
         id,
@@ -70,6 +75,7 @@ export async function POST(
         original.isbn,
         boardPos,
         true, // is_reread
+        rootId,
       ]
     );
 

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { Book } from "@/lib/types";
+import type { Book, ReadingGoal } from "@/lib/types";
 import { isIncomplete, GENRES, WORLDS, FORMATS } from "@/lib/types";
 import ExportButton from "@/components/ExportButton";
 import KanbanBoard from "@/components/KanbanBoard";
@@ -41,12 +41,51 @@ export default function DashboardPage() {
   const [boardFormat, setBoardFormat] = useState("");
   const [boardSpecialOnly, setBoardSpecialOnly] = useState(false);
 
+  const [goal, setGoal] = useState<ReadingGoal | null | undefined>(undefined);
+  const [savingGoal, setSavingGoal] = useState(false);
+
   useEffect(() => {
     fetch("/api/books")
       .then((res) => res.json())
       .then((data) => setBooks(data as Book[]))
       .catch((err) => setError(err.message));
   }, []);
+
+  useEffect(() => {
+    fetch("/api/reading-goal")
+      .then((res) => res.json())
+      .then((data) => setGoal(data))
+      .catch(() => setGoal(null));
+  }, []);
+
+  async function handleSetGoal() {
+    const currentYear = new Date().getFullYear();
+    const input = prompt(
+      `How many books do you want to read in ${currentYear}?`,
+      goal?.goal ? String(goal.goal) : ""
+    );
+    if (input === null) return;
+    const parsed = Number(input);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      alert("Enter a whole number greater than 0.");
+      return;
+    }
+    setSavingGoal(true);
+    try {
+      const res = await fetch("/api/reading-goal", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ year: currentYear, goal: parsed }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save goal");
+      setGoal(data);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSavingGoal(false);
+    }
+  }
 
   function applySavedBook(updated: Book) {
     setBooks((prev) =>
@@ -389,6 +428,52 @@ export default function DashboardPage() {
             run it
           </p>
         </Link>
+      )}
+
+      {goal !== undefined && (
+        <div className="card">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-semibold text-ink">🎯 {derived.currentYear} Reading Goal</h2>
+            <button
+              className="text-sm text-brass hover:underline"
+              onClick={handleSetGoal}
+              disabled={savingGoal}
+              type="button"
+            >
+              {goal ? "Edit" : "Set a goal"}
+            </button>
+          </div>
+          {goal ? (
+            <>
+              <div className="flex items-baseline justify-between mb-1">
+                <p className="text-sm text-stone-600">
+                  {derived.finishedThisYear.length} of {goal.goal} books
+                </p>
+                <p className="text-xs text-stone-500">
+                  {Math.min(100, Math.round((derived.finishedThisYear.length / goal.goal) * 100))}%
+                </p>
+              </div>
+              <div className="h-2.5 rounded-full bg-stone-100 overflow-hidden">
+                <div
+                  className="h-full bg-brass rounded-full transition-all"
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      Math.round((derived.finishedThisYear.length / goal.goal) * 100)
+                    )}%`,
+                  }}
+                />
+              </div>
+              {derived.finishedThisYear.length >= goal.goal && (
+                <p className="text-xs text-emerald-700 mt-1.5">🎉 Goal reached!</p>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-stone-500">
+              Set a goal to track your progress toward {derived.currentYear}&rsquo;s reading.
+            </p>
+          )}
+        </div>
       )}
 
       <div className="space-y-3">

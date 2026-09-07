@@ -7,6 +7,7 @@ import ThemeSwitcher from "./ThemeSwitcher";
 const LINKS = [
   { href: "/", label: "Dashboard" },
   { href: "/library", label: "Library" },
+  { href: "/series", label: "Series" },
   { href: "/year-in-review", label: "Year in Review" },
   { href: "/releases", label: "Upcoming Releases" },
 ];

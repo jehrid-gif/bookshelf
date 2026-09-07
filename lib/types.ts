@@ -95,13 +95,27 @@ export interface Book {
   enrichment_checked_at: string | null;
   board_pos: number;
   is_reread: boolean;
+  // Set once, only by the Read Again route — points at the trello_id of the
+  // book this is a fresh read-through of. Not app-level FK-enforced (kept
+  // simple on purpose — see the reading_goals/original_id migration notes),
+  // so treat a dangling value (original deleted) as just "no longer linked"
+  // rather than an error.
+  original_id: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export type BookInput = Partial<
-  Omit<Book, "trello_id" | "created_at" | "updated_at" | "length_category" | "is_reread">
+  Omit<
+    Book,
+    "trello_id" | "created_at" | "updated_at" | "length_category" | "is_reread" | "original_id"
+  >
 > & { title: string };
+
+export interface ReadingGoal {
+  year: number;
+  goal: number;
+}
 
 export function isIncomplete(b: Book): boolean {
   // Wishlist books aren't owned yet — there's nothing to fill in until
