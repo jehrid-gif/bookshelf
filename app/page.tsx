@@ -727,7 +727,7 @@ export default function DashboardPage() {
                 className="text-left"
                 title={b.title}
               >
-                <BookCover book={b} className="w-full h-28" />
+                <BookCover book={b} className="w-full aspect-[2/3]" />
                 <p className="text-[11px] text-stone-600 mt-1 line-clamp-2">{b.title}</p>
                 <p className="text-amber-600 text-xs">{"★".repeat(b.my_rating!)}</p>
               </button>

@@ -108,7 +108,7 @@ export default function SeriesPage() {
                       className="text-left"
                       title={b.title}
                     >
-                      <BookCover book={b} className="w-full h-28" />
+                      <BookCover book={b} className="w-full aspect-[2/3]" />
                       <p className="text-[11px] text-stone-600 mt-1 line-clamp-2">
                         {b.series_index ? `#${b.series_index} — ` : ""}
                         {b.title}

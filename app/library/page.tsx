@@ -612,7 +612,7 @@ function LibraryInner() {
                 title={b.author ? `${b.title} — ${b.author}` : b.title}
               >
                 <div className="relative">
-                  <BookCover book={b} className="w-full h-32 sm:h-36" />
+                  <BookCover book={b} className="w-full aspect-[2/3]" />
                   {isIncomplete(b) && (
                     <span
                       className="absolute -top-1 -right-1 text-xs"

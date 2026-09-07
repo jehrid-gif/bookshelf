@@ -30,6 +30,11 @@ function colorFor(g: string) {
   return GENRE_COLORS[g] || UNCLASSIFIED_COLOR;
 }
 
+interface ReadExtreme {
+  book: Book;
+  days: number;
+}
+
 interface YearStats {
   year: string;
   books: Book[];
@@ -37,6 +42,8 @@ interface YearStats {
   pages: number;
   avgRating: number | null;
   avgDaysToFinish: number | null;
+  fastestRead: ReadExtreme | null;
+  slowestRead: ReadExtreme | null;
   genreCounts: Record<string, number>;
   topGenre: string | null;
 }
@@ -68,6 +75,18 @@ function buildYearStats(books: Book[]): YearStats[] {
             ) / timed.length
           )
         : null;
+      const timedWithDays: ReadExtreme[] = timed.map((b) => ({
+        book: b,
+        days: Math.round(
+          (new Date(b.date_finished!).getTime() - new Date(b.date_started!).getTime()) / 86400000
+        ),
+      }));
+      const fastestRead = timedWithDays.length
+        ? timedWithDays.reduce((min, cur) => (cur.days < min.days ? cur : min))
+        : null;
+      const slowestRead = timedWithDays.length
+        ? timedWithDays.reduce((max, cur) => (cur.days > max.days ? cur : max))
+        : null;
       const genreCounts: Record<string, number> = {};
       for (const b of yearBooks) {
         const g = b.genre || "Unclassified";
@@ -82,11 +101,81 @@ function buildYearStats(books: Book[]): YearStats[] {
         pages,
         avgRating,
         avgDaysToFinish,
+        fastestRead,
+        slowestRead,
         genreCounts,
         topGenre,
       };
     })
     .sort((a, b) => Number(b.year) - Number(a.year));
+}
+
+// All-time fastest/slowest reads, pooled across every finished book with
+// both a start and finish date (rereads included — a reread's speed is its
+// own real data point).
+function computeAllTimeExtremes(books: Book[]): {
+  fastest: ReadExtreme | null;
+  slowest: ReadExtreme | null;
+} {
+  const timed = books.filter((b) => b.status === "finished" && b.date_started && b.date_finished);
+  const withDays: ReadExtreme[] = timed.map((b) => ({
+    book: b,
+    days: Math.round(
+      (new Date(b.date_finished!).getTime() - new Date(b.date_started!).getTime()) / 86400000
+    ),
+  }));
+  if (!withDays.length) return { fastest: null, slowest: null };
+  return {
+    fastest: withDays.reduce((min, cur) => (cur.days < min.days ? cur : min)),
+    slowest: withDays.reduce((max, cur) => (cur.days > max.days ? cur : max)),
+  };
+}
+
+// Volume-based — plain finish count, unlike the rating-based Authors
+// ranking above. An author you've read 8 books by but never rated 5 stars
+// still shows up here as someone you clearly can't put down.
+function buildMostReadAuthors(books: Book[]): { name: string; count: number }[] {
+  const finished = books.filter((b) => b.status === "finished" && !b.is_reread && b.author);
+  const counts = new Map<string, number>();
+  for (const b of finished) {
+    counts.set(b.author!, (counts.get(b.author!) || 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .filter(([, count]) => count >= 2)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+}
+
+interface RereadStats {
+  totalRereads: number;
+  mostRereadTitle: string | null;
+  mostRereadCount: number;
+}
+
+// Groups reread copies by their root book (original_id, flattened) to find
+// which book/chain has been revisited the most.
+function computeRereadStats(books: Book[]): RereadStats {
+  const rereads = books.filter((b) => b.is_reread);
+  const counts = new Map<string, { title: string; count: number }>();
+  for (const b of rereads) {
+    const rootId = b.original_id || b.trello_id;
+    const existing = counts.get(rootId);
+    if (existing) {
+      existing.count++;
+    } else {
+      counts.set(rootId, { title: b.title, count: 1 });
+    }
+  }
+  let mostRereadTitle: string | null = null;
+  let mostRereadCount = 0;
+  for (const { title, count } of counts.values()) {
+    if (count > mostRereadCount) {
+      mostRereadCount = count;
+      mostRereadTitle = title;
+    }
+  }
+  return { totalRereads: rereads.length, mostRereadTitle, mostRereadCount };
 }
 
 interface RatingBreakdown {
@@ -255,6 +344,9 @@ function YearInReviewInner() {
   const ratingDistribution = useMemo(() => buildRatingDistribution(books || []), [books]);
   const formatTrends = useMemo(() => buildFormatTrends(books || []), [books]);
   const seasonalPattern = useMemo(() => buildSeasonalPattern(books || []), [books]);
+  const allTimeExtremes = useMemo(() => computeAllTimeExtremes(books || []), [books]);
+  const mostReadAuthors = useMemo(() => buildMostReadAuthors(books || []), [books]);
+  const rereadStats = useMemo(() => computeRereadStats(books || []), [books]);
 
   const selectedYear = searchParams.get("year");
   const selected = yearStats.find((y) => y.year === selectedYear) || null;
@@ -321,7 +413,7 @@ function YearInReviewInner() {
                 className="text-left"
                 title={b.title}
               >
-                <BookCover book={b} className="w-full h-28" />
+                <BookCover book={b} className="w-full aspect-[2/3]" />
               </button>
             ))}
           </div>
@@ -339,7 +431,7 @@ function YearInReviewInner() {
                   className="text-left"
                   title={b.title}
                 >
-                  <BookCover book={b} className="w-full h-36" />
+                  <BookCover book={b} className="w-full aspect-[2/3]" />
                   <p className="text-sm font-medium text-ink mt-1.5 line-clamp-2">{b.title}</p>
                   <p className="text-amber-600 text-xs mt-0.5">{"★".repeat(b.my_rating!)}</p>
                 </button>
@@ -376,6 +468,43 @@ function YearInReviewInner() {
             <p className="text-xs uppercase tracking-wide text-stone-500">Top Genre</p>
           </div>
         </div>
+
+        {(selected.fastestRead || selected.slowestRead) && (
+          <div className="grid sm:grid-cols-2 gap-3">
+            {selected.fastestRead && (
+              <button
+                type="button"
+                onClick={() => setViewing(selected.fastestRead!.book)}
+                className="card text-left hover:bg-parchment/60 transition-colors flex items-center gap-3"
+              >
+                <BookCover book={selected.fastestRead.book} className="w-12 h-16 flex-none" />
+                <div className="min-w-0">
+                  <p className="text-xs uppercase tracking-wide text-stone-500">⚡ Fastest Read</p>
+                  <p className="font-medium text-ink truncate">{selected.fastestRead.book.title}</p>
+                  <p className="text-sm text-stone-500">
+                    {selected.fastestRead.days} day{selected.fastestRead.days === 1 ? "" : "s"}
+                  </p>
+                </div>
+              </button>
+            )}
+            {selected.slowestRead && (
+              <button
+                type="button"
+                onClick={() => setViewing(selected.slowestRead!.book)}
+                className="card text-left hover:bg-parchment/60 transition-colors flex items-center gap-3"
+              >
+                <BookCover book={selected.slowestRead.book} className="w-12 h-16 flex-none" />
+                <div className="min-w-0">
+                  <p className="text-xs uppercase tracking-wide text-stone-500">🐢 Slowest Read</p>
+                  <p className="font-medium text-ink truncate">{selected.slowestRead.book.title}</p>
+                  <p className="text-sm text-stone-500">
+                    {selected.slowestRead.days} day{selected.slowestRead.days === 1 ? "" : "s"}
+                  </p>
+                </div>
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="card">
           <h2 className="font-semibold text-ink mb-3">Genre Breakdown</h2>
@@ -486,6 +615,83 @@ function YearInReviewInner() {
           </p>
         )}
       </div>
+
+      {(allTimeExtremes.fastest || allTimeExtremes.slowest) && (
+        <div className="grid sm:grid-cols-2 gap-3">
+          {allTimeExtremes.fastest && (
+            <div className="card flex items-center gap-3">
+              <BookCover book={allTimeExtremes.fastest.book} className="w-12 h-16 flex-none" />
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-wide text-stone-500">
+                  ⚡ Fastest Read (All-Time)
+                </p>
+                <p className="font-medium text-ink truncate">
+                  {allTimeExtremes.fastest.book.title}
+                </p>
+                <p className="text-sm text-stone-500">
+                  {allTimeExtremes.fastest.days} day{allTimeExtremes.fastest.days === 1 ? "" : "s"}
+                </p>
+              </div>
+            </div>
+          )}
+          {allTimeExtremes.slowest && (
+            <div className="card flex items-center gap-3">
+              <BookCover book={allTimeExtremes.slowest.book} className="w-12 h-16 flex-none" />
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-wide text-stone-500">
+                  🐢 Slowest Read (All-Time)
+                </p>
+                <p className="font-medium text-ink truncate">
+                  {allTimeExtremes.slowest.book.title}
+                </p>
+                <p className="text-sm text-stone-500">
+                  {allTimeExtremes.slowest.days} day{allTimeExtremes.slowest.days === 1 ? "" : "s"}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {(mostReadAuthors.length > 0 || rereadStats.totalRereads > 0) && (
+        <div className="grid sm:grid-cols-2 gap-3">
+          {mostReadAuthors.length > 0 && (
+            <div className="card">
+              <h2 className="font-semibold text-ink mb-1">Most-Read Authors</h2>
+              <p className="text-xs text-stone-500 mb-3">
+                By finish count, not rating — who you keep coming back to.
+              </p>
+              <ul className="space-y-1.5">
+                {mostReadAuthors.map((a) => (
+                  <li key={a.name} className="flex items-center justify-between gap-2 text-sm">
+                    <span className="text-ink truncate">{a.name}</span>
+                    <span className="text-stone-500 flex-none text-xs font-medium">
+                      {a.count} book{a.count === 1 ? "" : "s"}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {rereadStats.totalRereads > 0 && (
+            <div className="card">
+              <h2 className="font-semibold text-ink mb-3">💭 Comfort Rereads</h2>
+              <p className="text-2xl font-bold text-ink">{rereadStats.totalRereads}</p>
+              <p className="text-xs uppercase tracking-wide text-stone-500 mb-3">
+                Total Times Reread
+              </p>
+              {rereadStats.mostRereadTitle && rereadStats.mostRereadCount >= 2 && (
+                <p className="text-sm text-stone-600">
+                  Most reread:{" "}
+                  <span className="font-medium text-ink">{rereadStats.mostRereadTitle}</span> (
+                  {rereadStats.mostRereadCount}×)
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {(byGenre.length > 0 || byAuthor.length > 0) && (
         <div className="grid sm:grid-cols-2 gap-3">
