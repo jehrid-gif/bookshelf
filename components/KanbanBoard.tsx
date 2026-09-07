@@ -5,11 +5,15 @@ import type { Book, BookStatus } from "@/lib/types";
 import BookDetail from "@/components/BookDetail";
 import BookCover from "@/components/BookCover";
 
+// Bar colors resolve through the same theme variables as the rest of the
+// app (see tailwind.config.ts / globals.css) instead of fixed hex values,
+// so they repaint correctly across all six color themes rather than only
+// looking right in Parchment.
 const COLUMNS: { id: BookStatus; label: string; sub: string; bar: string }[] = [
-  { id: "wishlist", label: "Wishlist", sub: "Don't own it yet", bar: "#a9793c" },
-  { id: "to_read", label: "To Read", sub: "Owned, unread", bar: "#8c8268" },
-  { id: "reading", label: "Reading", sub: "In progress", bar: "#3a5a45" },
-  { id: "finished", label: "Finished", sub: "Read it", bar: "#33465c" },
+  { id: "wishlist", label: "Wishlist", sub: "Don't own it yet", bar: "rgb(var(--color-brass))" },
+  { id: "to_read", label: "To Read", sub: "Owned, unread", bar: "rgb(var(--stone-400))" },
+  { id: "reading", label: "Reading", sub: "In progress", bar: "rgb(var(--board-reading))" },
+  { id: "finished", label: "Finished", sub: "Read it", bar: "rgb(var(--stone-600))" },
 ];
 
 // The drag-and-drop Kanban view — originally its own page, now embedded on
@@ -115,10 +119,13 @@ export default function KanbanBoard({
         {COLUMNS.map((col) => {
           const fullList = byStatus[col.id] || [];
           const list = filter ? fullList.filter(filter) : fullList;
+          const colIndex = COLUMNS.findIndex((c) => c.id === col.id);
+          const prevCol = COLUMNS[colIndex - 1];
+          const nextCol = COLUMNS[colIndex + 1];
           return (
             <div
               key={col.id}
-              className="flex-none w-64 bg-stone-100 rounded-xl border border-stone-200 flex flex-col max-h-[calc(100vh-320px)] min-h-[220px]"
+              className="flex-1 min-w-[16rem] bg-stone-100 rounded-xl border border-stone-200 flex flex-col max-h-[calc(100vh-320px)] min-h-[220px]"
             >
               <div className="px-3 pt-3 pb-2">
                 <div className="flex items-center gap-2">
@@ -215,6 +222,38 @@ export default function KanbanBoard({
                           </span>
                         )}
                       </div>
+                    </div>
+                    {/* Drag-and-drop doesn't work on touch devices, so these
+                        buttons are the only way to move a card between
+                        columns on mobile — kept visible (not hover-only)
+                        for that reason, not just as a shortcut on desktop. */}
+                    <div className="flex flex-col gap-0.5 flex-none">
+                      <button
+                        type="button"
+                        title={prevCol ? `Move to ${prevCol.label}` : undefined}
+                        aria-label={prevCol ? `Move to ${prevCol.label}` : undefined}
+                        disabled={!prevCol}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (prevCol) moveBook(b, prevCol.id, Number.MAX_SAFE_INTEGER);
+                        }}
+                        className="w-6 h-6 flex items-center justify-center rounded-full text-stone-500 hover:bg-stone-200 disabled:opacity-0 disabled:pointer-events-none"
+                      >
+                        ‹
+                      </button>
+                      <button
+                        type="button"
+                        title={nextCol ? `Move to ${nextCol.label}` : undefined}
+                        aria-label={nextCol ? `Move to ${nextCol.label}` : undefined}
+                        disabled={!nextCol}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (nextCol) moveBook(b, nextCol.id, Number.MAX_SAFE_INTEGER);
+                        }}
+                        className="w-6 h-6 flex items-center justify-center rounded-full text-stone-500 hover:bg-stone-200 disabled:opacity-0 disabled:pointer-events-none"
+                      >
+                        ›
+                      </button>
                     </div>
                   </div>
                 ))}

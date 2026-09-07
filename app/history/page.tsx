@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { SkeletonLines } from "@/components/Skeleton";
 
 interface BookChange {
   id: string;
@@ -115,7 +116,7 @@ export default function HistoryPage() {
         <div className="rounded-md bg-red-50 text-red-700 text-sm px-3 py-2">{undoError}</div>
       )}
 
-      {!changes && !error && <p className="text-stone-500">Loading…</p>}
+      {!changes && !error && <SkeletonLines />}
 
       {changes && changes.length === 0 && (
         <p className="text-stone-500">Nothing logged yet — make a change and it'll show up here.</p>

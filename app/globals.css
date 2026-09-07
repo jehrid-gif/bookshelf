@@ -30,6 +30,11 @@
   --stone-500: 116 101 79;
   --stone-600: 84 71 54;
   --stone-700: 58 48 36;
+  /* Board column accent (the "Reading" column's dot/bar) — brass covers
+     Wishlist, stone-400/600 cover To Read/Finished, so this is the one
+     hue each theme needs of its own. Forest green reads clearly against
+     parchment's warm cream. */
+  --board-reading: 58 90 69;
 }
 
 /* Forest Library — soft sage green, light surfaces. */
@@ -47,6 +52,10 @@
   --stone-500: 96 111 78;
   --stone-600: 68 82 55;
   --stone-700: 46 56 37;
+  /* Forest's own brass is already green, so Reading gets a warm amber
+     instead — it needs to stand apart from Wishlist's green, not blend
+     into the theme's sage backdrop. */
+  --board-reading: 180 130 60;
 }
 
 /* Misty Harbor — soft blue-gray, calm coastal-fog feel. */
@@ -64,6 +73,7 @@
   --stone-500: 88 108 116;
   --stone-600: 62 79 86;
   --stone-700: 42 55 60;
+  --board-reading: 70 140 90;
 }
 
 /* Midnight Study — dark, warm gold accents. */
@@ -81,6 +91,9 @@
   --stone-500: 146 150 161;
   --stone-600: 174 177 186;
   --stone-700: 202 204 210;
+  /* Dark themes get a brighter Reading accent so it still pops against
+     the dark surface. */
+  --board-reading: 110 180 130;
 }
 
 /* Evergreen Night — deep green-black, calm forest-at-night feel. */
@@ -98,6 +111,9 @@
   --stone-500: 140 148 136;
   --stone-600: 168 175 163;
   --stone-700: 196 201 190;
+  /* Evergreen's brass is already green like Forest's, so Reading gets the
+     same warm-amber treatment for contrast against the dark green backdrop. */
+  --board-reading: 210 170 100;
 }
 
 /* Twilight Plum — deep muted plum, calm dusky feel. */
@@ -115,6 +131,7 @@
   --stone-500: 150 141 156;
   --stone-600: 176 168 180;
   --stone-700: 202 196 205;
+  --board-reading: 120 185 140;
 }
 
 body {

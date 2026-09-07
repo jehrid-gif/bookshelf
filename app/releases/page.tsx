@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { SkeletonLines } from "@/components/Skeleton";
 import type { UpcomingRelease } from "@/lib/types";
 
 interface WatchedAuthor {
@@ -257,7 +258,7 @@ export default function ReleasesPage() {
         )}
       </div>
 
-      {!releases && !error && <p className="text-stone-500">Loading…</p>}
+      {!releases && !error && <SkeletonLines />}
 
       {releases && (
         <>

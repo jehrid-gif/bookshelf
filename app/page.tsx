@@ -14,6 +14,7 @@ import BarcodeScannerModal from "@/components/BarcodeScannerModal";
 import BookDetail from "@/components/BookDetail";
 import BookForm from "@/components/BookForm";
 import Modal from "@/components/Modal";
+import Skeleton from "@/components/Skeleton";
 import { normalizeIsbn } from "@/lib/isbn";
 const BookDetailAny = BookDetail as any;
 const DiscoverPanelAny = DiscoverPanel as any;
@@ -237,7 +238,52 @@ export default function DashboardPage() {
   }
 
   if (!books) {
-    return <p className="text-stone-500">Loading your shelf…</p>;
+    return (
+      <div className="space-y-6" aria-busy="true" aria-label="Loading your shelf">
+        <div className="flex items-center gap-3 flex-wrap">
+          <Skeleton className="h-7 w-32" />
+        </div>
+
+        <div className="rounded-lg border border-stone-200 shadow-sm bg-surface overflow-hidden">
+          <div className="grid grid-cols-2 sm:grid-cols-5">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div
+                key={i}
+                className="text-center px-3 py-4 border-r border-b sm:border-b-0 border-stone-200 last:border-r-0"
+              >
+                <Skeleton className="h-6 w-10 mx-auto mb-2" />
+                <Skeleton className="h-3 w-14 mx-auto" />
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 border-t border-stone-200">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="px-3 py-3 text-center">
+                <Skeleton className="h-5 w-12 mx-auto mb-2" />
+                <Skeleton className="h-3 w-16 mx-auto" />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <Skeleton className="h-5 w-20" />
+          <Skeleton className="h-10 w-full" />
+          <div className="flex gap-3 overflow-hidden pb-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div
+                key={i}
+                className="flex-1 min-w-[16rem] bg-stone-100 rounded-xl border border-stone-200 p-3 space-y-2"
+              >
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-16 w-full" />
+                <Skeleton className="h-16 w-full" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -408,7 +454,7 @@ export default function DashboardPage() {
         />
       </div>
 
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap justify-center gap-3">
         <Link href="/year-in-review" className="btn btn-secondary">
           📅 Year in Review
         </Link>

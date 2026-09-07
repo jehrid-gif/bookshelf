@@ -8,6 +8,7 @@ import BookCover from "@/components/BookCover";
 import Modal from "@/components/Modal";
 import SearchFilterBar from "@/components/SearchFilterBar";
 import BarcodeScannerModal from "@/components/BarcodeScannerModal";
+import Skeleton, { SkeletonLines } from "@/components/Skeleton";
 import type { Book } from "@/lib/types";
 import { GENRES, STATUSES, FORMATS, WORLDS, MOODS, isIncomplete } from "@/lib/types";
 import { normalizeIsbn } from "@/lib/isbn";
@@ -558,7 +559,23 @@ function LibraryInner() {
         <div className="rounded-md bg-red-50 text-red-700 text-sm px-3 py-2">{error}</div>
       )}
 
-      {!books && !error && <p className="text-stone-500">Loading your shelf…</p>}
+      {!books && !error && (
+        <div className="card !p-0 overflow-hidden" aria-busy="true" aria-label="Loading your shelf">
+          <div className="divide-y divide-stone-100">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 px-3 py-2.5">
+                <Skeleton className="w-8 h-12 rounded flex-none" />
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <Skeleton className="h-3.5 w-1/3" />
+                  <Skeleton className="h-3 w-1/5" />
+                </div>
+                <Skeleton className="h-3 w-16 hidden sm:block flex-none" />
+                <Skeleton className="h-3 w-12 hidden sm:block flex-none" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {books && (
         <div className="card !p-0 overflow-x-auto">
@@ -671,7 +688,7 @@ function LibraryInner() {
 
 export default function LibraryPage() {
   return (
-    <Suspense fallback={<p className="text-stone-500">Loading…</p>}>
+    <Suspense fallback={<SkeletonLines />}>
       <LibraryInner />
     </Suspense>
   );

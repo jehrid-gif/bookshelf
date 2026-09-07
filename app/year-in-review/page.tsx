@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import BookDetail from "@/components/BookDetail";
 import MonthlyGenreChart from "@/components/MonthlyGenreChart";
+import { SkeletonLines } from "@/components/Skeleton";
 import type { Book } from "@/lib/types";
 
 const MONTH_NAMES = [
@@ -97,7 +98,7 @@ function YearInReviewInner() {
   }
 
   if (!books) {
-    return <p className="text-stone-500">Loading…</p>;
+    return <SkeletonLines />;
   }
 
   if (selected) {
@@ -262,7 +263,7 @@ function YearInReviewInner() {
 
 export default function YearInReviewPage() {
   return (
-    <Suspense fallback={<p className="text-stone-500">Loading…</p>}>
+    <Suspense fallback={<SkeletonLines />}>
       <YearInReviewInner />
     </Suspense>
   );
