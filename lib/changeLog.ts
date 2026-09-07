@@ -73,6 +73,14 @@ export async function logChange(opts: LogChangeOpts): Promise<void> {
         changedFields,
       ]
     );
+
+    // Retention: this log is a "recent actions" trail for /history and Undo,
+    // not a permanent audit log, so it's kept capped at the most recent 50
+    // entries rather than growing forever.
+    await query(
+      `DELETE FROM book_changes
+       WHERE id NOT IN (SELECT id FROM book_changes ORDER BY created_at DESC LIMIT 50)`
+    );
   } catch {
     // See above — never let history logging break the real operation.
   }
