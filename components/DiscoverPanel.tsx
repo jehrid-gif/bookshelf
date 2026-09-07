@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Book } from "@/lib/types";
-import { WORLDS, GENRES, MOODS } from "@/lib/types";
+import { WORLDS, GENRES, MOODS, FORMATS, LENGTH_CATEGORIES } from "@/lib/types";
 import {
   computeReadNext,
   computeSuggestionPool,
@@ -76,6 +76,8 @@ export default function DiscoverPanel({
   // Find Your Next Read tab — one random pick from the same eligible pool.
   const [diceWorld, setDiceWorld] = useState("");
   const [diceGenre, setDiceGenre] = useState("");
+  const [diceLength, setDiceLength] = useState("");
+  const [diceFormat, setDiceFormat] = useState("");
   const [pick, setPick] = useState<Book | null>(null);
   const [diceError, setDiceError] = useState<string | null>(null);
 
@@ -85,11 +87,13 @@ export default function DiscoverPanel({
       const b = entry.book;
       if (diceWorld && !b.worlds.includes(diceWorld)) return false;
       if (diceGenre && b.genre !== diceGenre) return false;
+      if (diceLength && b.length_category !== diceLength) return false;
+      if (diceFormat && b.format !== diceFormat) return false;
       return true;
     });
     if (candidates.length === 0) {
       setPick(null);
-      setDiceError("No eligible books match that world/genre right now.");
+      setDiceError("No eligible books match those filters right now.");
       return;
     }
     const choice = candidates[Math.floor(Math.random() * candidates.length)];
@@ -262,7 +266,7 @@ export default function DiscoverPanel({
       {tab === "dice" && (
         <div className="space-y-3">
           <p className="text-sm text-stone-500">
-            Pick a world and/or genre to narrow it down, or leave both open for anything.
+            Narrow by world, genre, length, and/or format, or leave them all open for anything.
           </p>
           <div className="flex flex-col gap-2">
             <select className="input" value={diceWorld} onChange={(e) => setDiceWorld(e.target.value)}>
@@ -278,6 +282,22 @@ export default function DiscoverPanel({
               {GENRES.map((g) => (
                 <option key={g} value={g}>
                   {g}
+                </option>
+              ))}
+            </select>
+            <select className="input" value={diceLength} onChange={(e) => setDiceLength(e.target.value)}>
+              <option value="">Any length</option>
+              {LENGTH_CATEGORIES.map((l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
+            </select>
+            <select className="input" value={diceFormat} onChange={(e) => setDiceFormat(e.target.value)}>
+              <option value="">Any format</option>
+              {FORMATS.map((f) => (
+                <option key={f} value={f}>
+                  {f}
                 </option>
               ))}
             </select>

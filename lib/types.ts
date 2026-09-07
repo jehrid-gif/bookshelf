@@ -28,6 +28,10 @@ export const STATUSES: BookStatus[] = ["to_read", "reading", "finished", "wishli
 
 export const FORMATS: BookFormat[] = ["physical", "ebook", "physical+ebook"];
 
+// Fixed shortest-to-longest order, driven by the page-count thresholds
+// Postgres uses for the generated `length_category` column.
+export const LENGTH_CATEGORIES: LengthCategory[] = ["Quick", "Medium", "Long", "Epic"];
+
 export const COVER_TYPES: CoverType[] = ["hardcover", "softcover"];
 
 export const SERIES_POSITIONS: SeriesPosition[] = [

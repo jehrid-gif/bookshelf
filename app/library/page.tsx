@@ -10,7 +10,7 @@ import SearchFilterBar from "@/components/SearchFilterBar";
 import BarcodeScannerModal from "@/components/BarcodeScannerModal";
 import Skeleton, { SkeletonLines } from "@/components/Skeleton";
 import type { Book } from "@/lib/types";
-import { GENRES, STATUSES, FORMATS, WORLDS, MOODS, isIncomplete } from "@/lib/types";
+import { GENRES, STATUSES, FORMATS, WORLDS, MOODS, LENGTH_CATEGORIES, isIncomplete } from "@/lib/types";
 import { normalizeIsbn } from "@/lib/isbn";
 const BookDetailAny = BookDetail as any;
 
@@ -29,7 +29,13 @@ function normalizeForDupe(s: string | null): string {
     .trim();
 }
 
-type SortKey = "title" | "author" | "series" | "genre" | "status" | "pages" | "rating";
+type SortKey = "title" | "author" | "series" | "genre" | "status" | "pages" | "length" | "rating";
+
+// -1 for "no length category yet" sorts those books first in ascending order,
+// same convention as pages/rating defaulting missing values to 0.
+function lengthRank(b: Book): number {
+  return b.length_category ? LENGTH_CATEGORIES.indexOf(b.length_category) : -1;
+}
 
 const COMPARATORS: Record<SortKey, (a: Book, b: Book) => number> = {
   title: (a, b) => a.title.localeCompare(b.title),
@@ -40,6 +46,7 @@ const COMPARATORS: Record<SortKey, (a: Book, b: Book) => number> = {
   genre: (a, b) => (a.genre || "").localeCompare(b.genre || ""),
   status: (a, b) => STATUS_LABEL[a.status].localeCompare(STATUS_LABEL[b.status]),
   pages: (a, b) => (a.pages || 0) - (b.pages || 0),
+  length: (a, b) => lengthRank(a) - lengthRank(b),
   rating: (a, b) => (a.my_rating || 0) - (b.my_rating || 0),
 };
 
@@ -64,6 +71,7 @@ function LibraryInner() {
   const [world, setWorld] = useState("");
   const [mood, setMood] = useState("");
   const [format, setFormat] = useState("");
+  const [length, setLength] = useState("");
   const [incompleteOnly, setIncompleteOnly] = useState(false);
   const [needsReviewOnly, setNeedsReviewOnly] = useState(false);
   const [physicalTodoOnly, setPhysicalTodoOnly] = useState(false);
@@ -103,6 +111,8 @@ function LibraryInner() {
     if (g) setGenre(g);
     const f = searchParams.get("format");
     if (f) setFormat(f);
+    const l = searchParams.get("length");
+    if (l) setLength(l);
     const filter = searchParams.get("filter");
     if (filter === "physical_todo") {
       setPhysicalTodoOnly(true);
@@ -137,6 +147,7 @@ function LibraryInner() {
       searchParams.get("status") ||
       searchParams.get("genre") ||
       searchParams.get("format") ||
+      searchParams.get("length") ||
       searchParams.get("filter")
     ) {
       router.replace("/library");
@@ -244,6 +255,7 @@ function LibraryInner() {
     if (world) list = list.filter((b) => b.worlds.includes(world));
     if (mood) list = list.filter((b) => b.moods.includes(mood));
     if (format) list = list.filter((b) => b.format === format);
+    if (length) list = list.filter((b) => b.length_category === length);
     if (incompleteOnly) list = list.filter(isIncomplete);
     if (needsReviewOnly) list = list.filter((b) => b.enrichment_status === "low_confidence");
     if (physicalTodoOnly) {
@@ -271,6 +283,7 @@ function LibraryInner() {
     world,
     mood,
     format,
+    length,
     incompleteOnly,
     needsReviewOnly,
     physicalTodoOnly,
@@ -288,6 +301,7 @@ function LibraryInner() {
     setWorld("");
     setMood("");
     setFormat("");
+    setLength("");
     setIncompleteOnly(false);
     setNeedsReviewOnly(false);
     setPhysicalTodoOnly(false);
@@ -480,7 +494,7 @@ function LibraryInner() {
         resultsLabel={books ? `Showing ${filtered.length} of ${books.length} books` : undefined}
       >
         <div className="space-y-3">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
             <select className="input" value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="">All statuses</option>
               {STATUSES.map((s) => (
@@ -502,6 +516,14 @@ function LibraryInner() {
               {FORMATS.map((f) => (
                 <option key={f} value={f}>
                   {f}
+                </option>
+              ))}
+            </select>
+            <select className="input" value={length} onChange={(e) => setLength(e.target.value)}>
+              <option value="">All lengths</option>
+              {LENGTH_CATEGORIES.map((l) => (
+                <option key={l} value={l}>
+                  {l}
                 </option>
               ))}
             </select>
@@ -649,6 +671,7 @@ function LibraryInner() {
                 {renderTh("genre", "Genre")}
                 {renderTh("status", "Status")}
                 {renderTh("pages", "Pages")}
+                {renderTh("length", "Length")}
                 {renderTh("rating", "Rating")}
               </tr>
             </thead>
@@ -697,6 +720,7 @@ function LibraryInner() {
                   <td className="px-3 py-2 text-stone-600">{b.genre || "—"}</td>
                   <td className="px-3 py-2 text-stone-600">{STATUS_LABEL[b.status]}</td>
                   <td className="px-3 py-2 text-stone-600">{b.pages ?? "—"}</td>
+                  <td className="px-3 py-2 text-stone-600">{b.length_category ?? "—"}</td>
                   <td className="px-3 py-2 text-stone-600">
                     {b.my_rating ? "★".repeat(b.my_rating) : "—"}
                   </td>
@@ -704,7 +728,7 @@ function LibraryInner() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-3 py-6 text-center text-stone-400">
+                  <td colSpan={10} className="px-3 py-6 text-center text-stone-400">
                     No books match these filters.
                   </td>
                 </tr>

@@ -126,6 +126,11 @@ export default function BookDetail({
                 {current.pages && (
                   <span className="badge bg-stone-100 text-stone-700">{current.pages}pg</span>
                 )}
+                {current.length_category && (
+                  <span className="badge bg-stone-100 text-stone-700">
+                    {current.length_category}
+                  </span>
+                )}
                 {current.format && (
                   <span className="badge bg-stone-100 text-stone-700">{current.format}</span>
                 )}

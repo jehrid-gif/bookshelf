@@ -211,6 +211,11 @@ export default function KanbanBoard({
                             {b.pages}pg
                           </span>
                         )}
+                        {b.length_category && (
+                          <span className="badge bg-stone-100 text-stone-600 text-[9px] px-1.5 py-0">
+                            {b.length_category}
+                          </span>
+                        )}
                         {b.special_edition && (
                           <span className="badge bg-brass/10 text-amber-900 text-[9px] px-1.5 py-0">
                             ✦

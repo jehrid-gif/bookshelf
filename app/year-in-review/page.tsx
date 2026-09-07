@@ -7,7 +7,8 @@ import BookDetail from "@/components/BookDetail";
 import BookCover from "@/components/BookCover";
 import MonthlyGenreChart from "@/components/MonthlyGenreChart";
 import { SkeletonLines } from "@/components/Skeleton";
-import type { Book } from "@/lib/types";
+import type { Book, LengthCategory } from "@/lib/types";
+import { LENGTH_CATEGORIES } from "@/lib/types";
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
@@ -129,6 +130,40 @@ function computeAllTimeExtremes(books: Book[]): {
     fastest: withDays.reduce((min, cur) => (cur.days < min.days ? cur : min)),
     slowest: withDays.reduce((max, cur) => (cur.days > max.days ? cur : max)),
   };
+}
+
+interface LengthExtreme {
+  book: Book;
+  pages: number;
+}
+
+// All-time longest/shortest reads by page count. Excludes rereads — a
+// reread of the same book has the same page count, so it wouldn't surface
+// anything new, just duplicate an already-known record.
+function computeAllTimeLengthExtremes(books: Book[]): {
+  longest: LengthExtreme | null;
+  shortest: LengthExtreme | null;
+} {
+  const withPages: LengthExtreme[] = books
+    .filter((b) => b.status === "finished" && !b.is_reread && b.pages)
+    .map((b) => ({ book: b, pages: b.pages! }));
+  if (!withPages.length) return { longest: null, shortest: null };
+  return {
+    longest: withPages.reduce((max, cur) => (cur.pages > max.pages ? cur : max)),
+    shortest: withPages.reduce((min, cur) => (cur.pages < min.pages ? cur : min)),
+  };
+}
+
+// Quick/Medium/Long/Epic distribution across every finished book (rereads
+// excluded, matching the length extremes above), in fixed shortest-to-
+// longest order regardless of which categories you actually have data for.
+function buildLengthBreakdown(books: Book[]): { category: LengthCategory; count: number }[] {
+  const counts: Record<LengthCategory, number> = { Quick: 0, Medium: 0, Long: 0, Epic: 0 };
+  for (const b of books) {
+    if (b.status !== "finished" || b.is_reread || !b.length_category) continue;
+    counts[b.length_category]++;
+  }
+  return LENGTH_CATEGORIES.map((category) => ({ category, count: counts[category] }));
 }
 
 // Volume-based — plain finish count, unlike the rating-based Authors
@@ -345,6 +380,11 @@ function YearInReviewInner() {
   const formatTrends = useMemo(() => buildFormatTrends(books || []), [books]);
   const seasonalPattern = useMemo(() => buildSeasonalPattern(books || []), [books]);
   const allTimeExtremes = useMemo(() => computeAllTimeExtremes(books || []), [books]);
+  const allTimeLengthExtremes = useMemo(
+    () => computeAllTimeLengthExtremes(books || []),
+    [books]
+  );
+  const lengthBreakdown = useMemo(() => buildLengthBreakdown(books || []), [books]);
   const mostReadAuthors = useMemo(() => buildMostReadAuthors(books || []), [books]);
   const rereadStats = useMemo(() => computeRereadStats(books || []), [books]);
 
@@ -653,6 +693,43 @@ function YearInReviewInner() {
         </div>
       )}
 
+      {(allTimeLengthExtremes.longest || allTimeLengthExtremes.shortest) && (
+        <div className="grid sm:grid-cols-2 gap-3">
+          {allTimeLengthExtremes.longest && (
+            <div className="card flex items-center gap-3">
+              <BookCover book={allTimeLengthExtremes.longest.book} className="w-12 h-16 flex-none" />
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-wide text-stone-500">
+                  📚 Longest Read (All-Time)
+                </p>
+                <p className="font-medium text-ink truncate">
+                  {allTimeLengthExtremes.longest.book.title}
+                </p>
+                <p className="text-sm text-stone-500">
+                  {allTimeLengthExtremes.longest.pages.toLocaleString()} pages
+                </p>
+              </div>
+            </div>
+          )}
+          {allTimeLengthExtremes.shortest && (
+            <div className="card flex items-center gap-3">
+              <BookCover book={allTimeLengthExtremes.shortest.book} className="w-12 h-16 flex-none" />
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-wide text-stone-500">
+                  📄 Shortest Read (All-Time)
+                </p>
+                <p className="font-medium text-ink truncate">
+                  {allTimeLengthExtremes.shortest.book.title}
+                </p>
+                <p className="text-sm text-stone-500">
+                  {allTimeLengthExtremes.shortest.pages.toLocaleString()} pages
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {(mostReadAuthors.length > 0 || rereadStats.totalRereads > 0) && (
         <div className="grid sm:grid-cols-2 gap-3">
           {mostReadAuthors.length > 0 && (
@@ -807,6 +884,34 @@ function YearInReviewInner() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {lengthBreakdown.some((l) => l.count > 0) && (
+        <div className="card">
+          <h2 className="font-semibold text-ink mb-1">Book Length Breakdown</h2>
+          <p className="text-xs text-stone-500 mb-3">
+            Quick (under 250pg) to Epic (600pg+), across every book you've finished.
+          </p>
+          <div className="space-y-2">
+            {lengthBreakdown.map((l) => {
+              const max = Math.max(...lengthBreakdown.map((x) => x.count), 1);
+              return (
+                <div key={l.category} className="flex items-center gap-2 text-sm">
+                  <span className="w-16 text-stone-600 flex-none">{l.category}</span>
+                  <div className="flex-1 h-3 rounded-full bg-stone-100 overflow-hidden">
+                    <div
+                      className="h-full bg-brass rounded-full"
+                      style={{ width: `${(l.count / max) * 100}%` }}
+                    />
+                  </div>
+                  <span className="w-8 text-right text-stone-500 text-xs flex-none">
+                    {l.count}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
