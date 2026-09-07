@@ -12,6 +12,7 @@ import ReadingPanel from "@/components/ReadingPanel";
 import DiscoverPanel from "@/components/DiscoverPanel";
 import BarcodeScannerModal from "@/components/BarcodeScannerModal";
 import BookDetail from "@/components/BookDetail";
+import BookCover from "@/components/BookCover";
 import BookForm from "@/components/BookForm";
 import Modal from "@/components/Modal";
 import Skeleton from "@/components/Skeleton";
@@ -220,6 +221,136 @@ export default function DashboardPage() {
       ? rated.reduce((sum, b) => sum + (b.my_rating || 0), 0) / rated.length
       : null;
 
+    // Year-over-year comparison — last year's same three headline numbers,
+    // so this year's pace has something to sit next to instead of floating
+    // in isolation.
+    const lastYear = currentYear - 1;
+    const finishedLastYear = finished.filter(
+      (b) => b.date_finished && new Date(b.date_finished).getFullYear() === lastYear
+    );
+    const pagesLastYear = finishedLastYear.reduce((sum, b) => sum + (b.pages || 0), 0);
+    const ratedLastYear = finishedLastYear.filter((b) => typeof b.my_rating === "number");
+    const avgRatingLastYear = ratedLastYear.length
+      ? ratedLastYear.reduce((sum, b) => sum + (b.my_rating || 0), 0) / ratedLastYear.length
+      : null;
+    const yearOverYear = {
+      books: { now: finishedThisYear.length, prev: finishedLastYear.length },
+      pages: { now: pagesThisYear, prev: pagesLastYear },
+      avgRating: { now: avgRating, prev: avgRatingLastYear },
+    };
+
+    // On This Day — anything finished on today's month/day in an earlier
+    // year. A once-a-year coincidence per book, so this is usually empty,
+    // which is fine — it only needs to be a nice surprise when it isn't.
+    const today = new Date();
+    const onThisDay = finished
+      .filter((b) => {
+        if (!b.date_finished) return false;
+        const d = new Date(b.date_finished);
+        return (
+          d.getMonth() === today.getMonth() &&
+          d.getDate() === today.getDate() &&
+          d.getFullYear() !== today.getFullYear()
+        );
+      })
+      .sort(
+        (a, b) => new Date(b.date_finished!).getFullYear() - new Date(a.date_finished!).getFullYear()
+      );
+
+    // Milestones — round-number totals across every finished read (rereads
+    // included, since a reread is just as real a finish). Fixed step list up
+    // to 1000 books, then every 250 beyond that.
+    const MILESTONES = [
+      10, 25, 50, 75, 100, 150, 200, 250, 300, 400, 500, 600, 700, 800, 900, 1000,
+    ];
+    const totalFinishedAllTime = finished.length;
+    const justHitMilestone = MILESTONES.includes(totalFinishedAllTime)
+      ? totalFinishedAllTime
+      : totalFinishedAllTime > 1000 && totalFinishedAllTime % 250 === 0
+      ? totalFinishedAllTime
+      : null;
+    const upcomingMilestone =
+      MILESTONES.find((m) => m > totalFinishedAllTime) ??
+      Math.ceil((totalFinishedAllTime + 1) / 250) * 250;
+    const milestoneRemaining = upcomingMilestone - totalFinishedAllTime;
+
+    // Reading personality — a light, deterministic read on your overall
+    // habits. Checked in order of "most specific/interesting signal first"
+    // so a reader who fits several labels gets the most distinctive one.
+    function computePersonality(): { title: string; blurb: string } | null {
+      if (finished.length < 5) return null;
+      const rereadCount = list.filter((b) => b.is_reread).length;
+      const genreSet = new Set(finished.map((b) => b.genre).filter(Boolean));
+      const seriesCounts = new Map<string, number>();
+      for (const b of finished) {
+        const s = (b.series || "").trim();
+        if (!s) continue;
+        seriesCounts.set(s, (seriesCounts.get(s) || 0) + 1);
+      }
+      const maxSeriesCount = seriesCounts.size ? Math.max(...seriesCounts.values()) : 0;
+      const timed = finished.filter((b) => b.date_started && b.date_finished);
+      const avgDays = timed.length
+        ? timed.reduce(
+            (sum, b) =>
+              sum +
+              (new Date(b.date_finished!).getTime() - new Date(b.date_started!).getTime()) /
+                86400000,
+            0
+          ) / timed.length
+        : null;
+      const standaloneCount = finished.filter((b) => !b.series || !b.series.trim()).length;
+
+      if (rereadCount >= 5) {
+        return {
+          title: "The Comfort Rereader",
+          blurb: `You've read something again ${rereadCount} times — old favorites are worth revisiting.`,
+        };
+      }
+      if (maxSeriesCount >= 5) {
+        return {
+          title: "The Series Devotee",
+          blurb: `You've stuck with one series for ${maxSeriesCount} books — once you're in, you're in.`,
+        };
+      }
+      if (genreSet.size >= 5) {
+        return {
+          title: "The Genre Explorer",
+          blurb: `You've finished books across ${genreSet.size} different genres — nothing pins you down.`,
+        };
+      }
+      if (avgDays !== null && avgDays <= 4) {
+        return {
+          title: "The Speed Reader",
+          blurb: `You finish a book in about ${Math.round(avgDays)} day${Math.round(avgDays) === 1 ? "" : "s"} on average.`,
+        };
+      }
+      if (avgDays !== null && avgDays >= 30) {
+        return {
+          title: "The Slow Burn Reader",
+          blurb: `You like to savor a book — about ${Math.round(avgDays)} days per read on average.`,
+        };
+      }
+      if (finished.length && standaloneCount / finished.length >= 0.7) {
+        return {
+          title: "The Standalone Fan",
+          blurb: "You mostly pick books that don't ask for a sequel commitment.",
+        };
+      }
+      return {
+        title: "The Steady Reader",
+        blurb: "A well-rounded reading habit — no single label fits quite right, and that's its own kind of consistent.",
+      };
+    }
+    const personality = computePersonality();
+
+    // Forgotten favorites — highly-rated finishes that haven't been touched
+    // in a while (updated_at is the closest proxy we have to "last looked
+    // at"), as a gentle nudge to revisit an old favorite.
+    const forgottenFavorites = finished
+      .filter((b) => !b.is_reread && typeof b.my_rating === "number" && b.my_rating >= 4)
+      .sort((a, b) => new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime())
+      .slice(0, 3);
+
     const stats = {
       total: trackedList.length,
       finished: finished.length,
@@ -255,6 +386,14 @@ export default function DashboardPage() {
       stats,
       owned,
       formatBreakdown,
+      yearOverYear,
+      lastYear,
+      onThisDay,
+      justHitMilestone,
+      upcomingMilestone,
+      milestoneRemaining,
+      personality,
+      forgottenFavorites,
     };
   }, [books]);
 
@@ -476,6 +615,127 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {derived.onThisDay.length > 0 && (
+        <div className="card border-violet-200 bg-violet-50">
+          <p className="text-violet-900 text-sm">
+            📖 On this day, you finished{" "}
+            {derived.onThisDay.map((b, i) => (
+              <span key={b.trello_id}>
+                {i > 0 && (i === derived.onThisDay.length - 1 ? " and " : ", ")}
+                <button
+                  type="button"
+                  className="font-medium underline hover:no-underline"
+                  onClick={() => setViewingBook(b)}
+                >
+                  {b.title}
+                </button>{" "}
+                ({new Date(b.date_finished!).getFullYear()})
+              </span>
+            ))}
+            .
+          </p>
+        </div>
+      )}
+
+      {derived.justHitMilestone && (
+        <div className="card border-amber-300 bg-amber-50 text-center">
+          <p className="text-amber-900 font-semibold">
+            🎉 {derived.justHitMilestone}th book finished — milestone reached!
+          </p>
+        </div>
+      )}
+
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div className="card">
+          <h2 className="font-semibold text-ink mb-3">
+            📈 {derived.currentYear} vs {derived.lastYear}
+          </h2>
+          <div className="space-y-2.5">
+            <YoyRow
+              label="Books"
+              now={derived.yearOverYear.books.now}
+              prev={derived.yearOverYear.books.prev}
+            />
+            <YoyRow
+              label="Pages"
+              now={derived.yearOverYear.pages.now}
+              prev={derived.yearOverYear.pages.prev}
+              format="pages"
+            />
+            <YoyRow
+              label="Avg Rating"
+              now={derived.yearOverYear.avgRating.now}
+              prev={derived.yearOverYear.avgRating.prev}
+              format="rating"
+            />
+          </div>
+        </div>
+
+        <div className="card">
+          <h2 className="font-semibold text-ink mb-2">🏆 Milestones</h2>
+          {derived.justHitMilestone ? (
+            <p className="text-sm text-amber-800 font-medium">
+              You just hit {derived.justHitMilestone} books finished!
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-stone-600">
+                {derived.milestoneRemaining} more book{derived.milestoneRemaining === 1 ? "" : "s"}{" "}
+                to your {derived.upcomingMilestone}th finish.
+              </p>
+              <div className="h-2 rounded-full bg-stone-100 overflow-hidden mt-2">
+                <div
+                  className="h-full bg-brass rounded-full"
+                  style={{
+                    width: `${Math.min(
+                      100,
+                      Math.round(
+                        ((derived.upcomingMilestone - derived.milestoneRemaining) /
+                          derived.upcomingMilestone) *
+                          100
+                      )
+                    )}%`,
+                  }}
+                />
+              </div>
+            </>
+          )}
+          {derived.personality && (
+            <div className="mt-4 pt-3 border-t border-stone-100">
+              <p className="text-xs uppercase tracking-wide text-stone-500 mb-1">
+                Reading Personality
+              </p>
+              <p className="font-semibold text-ink">{derived.personality.title}</p>
+              <p className="text-xs text-stone-500 mt-0.5">{derived.personality.blurb}</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {derived.forgottenFavorites.length > 0 && (
+        <div className="card">
+          <h2 className="font-semibold text-ink mb-1">💭 Forgotten Favorites</h2>
+          <p className="text-xs text-stone-500 mb-3">
+            Books you rated highly a while back — maybe it's time for a reread.
+          </p>
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
+            {derived.forgottenFavorites.map((b) => (
+              <button
+                key={b.trello_id}
+                type="button"
+                onClick={() => setViewingBook(b)}
+                className="text-left"
+                title={b.title}
+              >
+                <BookCover book={b} className="w-full h-28" />
+                <p className="text-[11px] text-stone-600 mt-1 line-clamp-2">{b.title}</p>
+                <p className="text-amber-600 text-xs">{"★".repeat(b.my_rating!)}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="space-y-3">
         <h2 className="font-semibold text-ink font-display">📋 Board</h2>
         <SearchFilterBar
@@ -597,6 +857,41 @@ export default function DashboardPage() {
           onReadAgain={handleReadAgain}
         />
       )}
+    </div>
+  );
+}
+
+function YoyRow({
+  label,
+  now,
+  prev,
+  format,
+}: {
+  label: string;
+  now: number | null;
+  prev: number | null;
+  format?: "pages" | "rating";
+}) {
+  function fmt(v: number | null): string {
+    if (v === null) return "—";
+    if (format === "pages") return v.toLocaleString();
+    if (format === "rating") return `${v.toFixed(1)}★`;
+    return String(v);
+  }
+  const delta = now !== null && prev !== null ? now - prev : null;
+  return (
+    <div className="flex items-center justify-between text-sm">
+      <span className="text-stone-600">{label}</span>
+      <span className="flex items-center gap-2">
+        <span className="font-medium text-ink">{fmt(now)}</span>
+        <span className="text-stone-400 text-xs">vs {fmt(prev)}</span>
+        {delta !== null && delta !== 0 && (
+          <span className={delta > 0 ? "text-emerald-600 text-xs" : "text-red-500 text-xs"}>
+            {delta > 0 ? "▲" : "▼"}{" "}
+            {format === "rating" ? Math.abs(delta).toFixed(1) : Math.abs(delta).toLocaleString()}
+          </span>
+        )}
+      </span>
     </div>
   );
 }
