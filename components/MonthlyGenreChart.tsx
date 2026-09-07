@@ -64,15 +64,15 @@ export default function MonthlyGenreChart({ books }: { books: Book[] }) {
           </span>
         ))}
       </div>
-      <div className="flex items-end gap-3 pb-1 flex-wrap sm:flex-nowrap" style={{ minHeight: CHART_HEIGHT + 28 }}>
+      <div className="flex items-end gap-2 sm:gap-3 pb-1" style={{ minHeight: CHART_HEIGHT + 28 }}>
           {months.map((m) => {
             const isFirst = m.month === 0;
             const isLast = m.month === 11;
             return (
             <div
               key={m.month}
-              className="relative flex flex-col items-center justify-end flex-none"
-              style={{ width: 34 }}
+              className="relative flex flex-col items-center justify-end flex-1 min-w-0"
+              style={{ maxWidth: 60 }}
               onMouseEnter={() => setHoverMonth(m.month)}
               onMouseLeave={() => setHoverMonth((h) => (h === m.month ? null : h))}
             >
