@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import BookDetail from "@/components/BookDetail";
+import BookCover from "@/components/BookCover";
 import MonthlyGenreChart from "@/components/MonthlyGenreChart";
 import { SkeletonLines } from "@/components/Skeleton";
 import type { Book } from "@/lib/types";
@@ -11,6 +12,9 @@ import type { Book } from "@/lib/types";
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
+];
+const MONTH_NAMES_SHORT = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
 const GENRE_COLORS: Record<string, string> = {
@@ -125,6 +129,108 @@ function buildRatingBreakdowns(books: Book[]): {
   };
 }
 
+// Moods/worlds are multi-valued tags per book, so a single book can feed
+// several buckets at once — unlike genre/author above, which pick one key
+// per book. Same "at least 2 rated" floor applies.
+function buildTagRatingBreakdown(books: Book[], field: "moods" | "worlds"): RatingBreakdown[] {
+  const rated = books.filter(
+    (b) => b.status === "finished" && typeof b.my_rating === "number" && !b.is_reread
+  );
+  const buckets = new Map<string, number[]>();
+  for (const b of rated) {
+    const tags = field === "moods" ? b.moods : b.worlds;
+    for (const tag of tags) {
+      if (!buckets.has(tag)) buckets.set(tag, []);
+      buckets.get(tag)!.push(b.my_rating!);
+    }
+  }
+  return Array.from(buckets.entries())
+    .filter(([, ratings]) => ratings.length >= 2)
+    .map(([name, ratings]) => ({
+      name,
+      avg: ratings.reduce((a, b) => a + b, 0) / ratings.length,
+      count: ratings.length,
+    }))
+    .sort((a, b) => b.avg - a.avg || b.count - a.count);
+}
+
+// How many 1-5 star ratings you've given out, across every finished book
+// (rereads included — a reread gets its own rating for its own read-through).
+function buildRatingDistribution(books: Book[]): { rating: number; count: number }[] {
+  const counts = [0, 0, 0, 0, 0];
+  for (const b of books) {
+    if (b.status !== "finished" || typeof b.my_rating !== "number") continue;
+    if (b.my_rating >= 1 && b.my_rating <= 5) counts[b.my_rating - 1]++;
+  }
+  return counts.map((count, i) => ({ rating: i + 1, count }));
+}
+
+interface FormatTrend {
+  year: string;
+  physical: number;
+  digital: number;
+  total: number;
+}
+
+// Physical vs digital finishes per year, oldest first — a "format" counts
+// toward both physical and digital if it's physical+ebook, matching the
+// dashboard's Completion by Format convention.
+function buildFormatTrends(books: Book[]): FormatTrend[] {
+  const byYear = new Map<string, Book[]>();
+  for (const b of books) {
+    if (b.status !== "finished" || !b.date_finished) continue;
+    const year = new Date(b.date_finished).getFullYear().toString();
+    if (!byYear.has(year)) byYear.set(year, []);
+    byYear.get(year)!.push(b);
+  }
+  return Array.from(byYear.entries())
+    .map(([year, yearBooks]) => ({
+      year,
+      physical: yearBooks.filter((b) => b.format === "physical" || b.format === "physical+ebook")
+        .length,
+      digital: yearBooks.filter((b) => b.format === "ebook" || b.format === "physical+ebook")
+        .length,
+      total: yearBooks.length,
+    }))
+    .sort((a, b) => Number(a.year) - Number(b.year));
+}
+
+interface SeasonalPattern {
+  month: number;
+  topGenre: string | null;
+  topCount: number;
+  totalInMonth: number;
+}
+
+// Which genre shows up most for each calendar month, pooled across every
+// year of history — "October is always Horror month" is a pattern you can
+// only see once you've got a few years stacked on top of each other.
+function buildSeasonalPattern(books: Book[]): SeasonalPattern[] {
+  const monthGenre = new Map<number, Map<string, number>>();
+  const monthTotal = new Map<number, number>();
+  for (const b of books) {
+    if (b.status !== "finished" || !b.date_finished) continue;
+    const m = new Date(b.date_finished).getMonth();
+    const g = b.genre || "Unclassified";
+    if (!monthGenre.has(m)) monthGenre.set(m, new Map());
+    const gm = monthGenre.get(m)!;
+    gm.set(g, (gm.get(g) || 0) + 1);
+    monthTotal.set(m, (monthTotal.get(m) || 0) + 1);
+  }
+  const result: SeasonalPattern[] = [];
+  for (let m = 0; m < 12; m++) {
+    const gm = monthGenre.get(m);
+    const total = monthTotal.get(m) || 0;
+    if (!gm || gm.size === 0) {
+      result.push({ month: m, topGenre: null, topCount: 0, totalInMonth: total });
+      continue;
+    }
+    const [topGenre, topCount] = Array.from(gm.entries()).sort((a, b) => b[1] - a[1])[0];
+    result.push({ month: m, topGenre, topCount, totalInMonth: total });
+  }
+  return result;
+}
+
 function YearInReviewInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -144,6 +250,11 @@ function YearInReviewInner() {
     () => buildRatingBreakdowns(books || []),
     [books]
   );
+  const byMood = useMemo(() => buildTagRatingBreakdown(books || [], "moods"), [books]);
+  const byWorld = useMemo(() => buildTagRatingBreakdown(books || [], "worlds"), [books]);
+  const ratingDistribution = useMemo(() => buildRatingDistribution(books || []), [books]);
+  const formatTrends = useMemo(() => buildFormatTrends(books || []), [books]);
+  const seasonalPattern = useMemo(() => buildSeasonalPattern(books || []), [books]);
 
   const selectedYear = searchParams.get("year");
   const selected = yearStats.find((y) => y.year === selectedYear) || null;
@@ -181,6 +292,14 @@ function YearInReviewInner() {
       );
     }
     const genreEntries = Object.entries(selected.genreCounts).sort((a, b) => b[1] - a[1]);
+    const topBooks = [...selected.books]
+      .filter((b) => typeof b.my_rating === "number")
+      .sort(
+        (a, b) =>
+          (b.my_rating || 0) - (a.my_rating || 0) ||
+          new Date(b.date_finished!).getTime() - new Date(a.date_finished!).getTime()
+      )
+      .slice(0, 5);
 
     return (
       <div className="space-y-5">
@@ -190,6 +309,44 @@ function YearInReviewInner() {
             ← All years
           </Link>
         </div>
+
+        <div className="card">
+          <h2 className="font-semibold text-ink mb-3">Your {selected.year} Shelf</h2>
+          <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-3">
+            {selected.books.map((b) => (
+              <button
+                key={b.trello_id}
+                type="button"
+                onClick={() => setViewing(b)}
+                className="text-left"
+                title={b.title}
+              >
+                <BookCover book={b} className="w-full h-28" />
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {topBooks.length > 0 && (
+          <div className="card">
+            <h2 className="font-semibold text-ink mb-3">Top Books of {selected.year}</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              {topBooks.map((b) => (
+                <button
+                  key={b.trello_id}
+                  type="button"
+                  onClick={() => setViewing(b)}
+                  className="text-left"
+                  title={b.title}
+                >
+                  <BookCover book={b} className="w-full h-36" />
+                  <p className="text-sm font-medium text-ink mt-1.5 line-clamp-2">{b.title}</p>
+                  <p className="text-amber-600 text-xs mt-0.5">{"★".repeat(b.my_rating!)}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           <div className="card text-center">
@@ -333,65 +490,193 @@ function YearInReviewInner() {
       {(byGenre.length > 0 || byAuthor.length > 0) && (
         <div className="grid sm:grid-cols-2 gap-3">
           {byGenre.length > 0 && (
+            <RankedList
+              title="Genres, by Avg Rating"
+              subtitle="Genres with at least 2 rated books, best first."
+              items={byGenre}
+              dotColor={colorFor}
+            />
+          )}
+          {byAuthor.length > 0 && (
+            <RankedList
+              title="Authors, by Avg Rating"
+              subtitle="Authors with at least 2 rated books, best first."
+              items={byAuthor}
+              limit={10}
+            />
+          )}
+        </div>
+      )}
+
+      {(byMood.length > 0 || byWorld.length > 0) && (
+        <div className="grid sm:grid-cols-2 gap-3">
+          {byMood.length > 0 && (
+            <RankedList
+              title="Moods, by Avg Rating"
+              subtitle="Moods with at least 2 rated books, best first."
+              items={byMood}
+              limit={10}
+            />
+          )}
+          {byWorld.length > 0 && (
+            <RankedList
+              title="Worlds, by Avg Rating"
+              subtitle="Worlds with at least 2 rated books, best first."
+              items={byWorld}
+            />
+          )}
+        </div>
+      )}
+
+      {(ratingDistribution.some((r) => r.count > 0) || formatTrends.length > 0) && (
+        <div className="grid sm:grid-cols-2 gap-3">
+          {ratingDistribution.some((r) => r.count > 0) && (
             <div className="card">
-              <h2 className="font-semibold text-ink mb-1">Genres, by Avg Rating</h2>
-              <p className="text-xs text-stone-500 mb-3">
-                Genres with at least 2 rated books, best first.
-              </p>
-              <ul className="space-y-1.5">
-                {byGenre.map((g) => (
-                  <li
-                    key={g.name}
-                    className="flex items-center justify-between gap-2 text-sm"
-                  >
-                    <span className="flex items-center gap-1.5 min-w-0">
-                      <span
-                        className="inline-block w-2.5 h-2.5 rounded-sm flex-none"
-                        style={{ background: colorFor(g.name) }}
-                      />
-                      <span className="text-ink truncate">{g.name}</span>
-                      <span className="text-stone-400 flex-none text-xs">
-                        ({g.count})
+              <h2 className="font-semibold text-ink mb-3">Star Rating Distribution</h2>
+              <div className="space-y-2">
+                {[5, 4, 3, 2, 1].map((star) => {
+                  const entry = ratingDistribution.find((r) => r.rating === star)!;
+                  const max = Math.max(...ratingDistribution.map((r) => r.count), 1);
+                  return (
+                    <div key={star} className="flex items-center gap-2 text-sm">
+                      <span className="w-8 text-stone-600 flex-none">{star}★</span>
+                      <div className="flex-1 h-3 rounded-full bg-stone-100 overflow-hidden">
+                        <div
+                          className="h-full bg-brass rounded-full"
+                          style={{ width: `${(entry.count / max) * 100}%` }}
+                        />
+                      </div>
+                      <span className="w-8 text-right text-stone-500 text-xs flex-none">
+                        {entry.count}
                       </span>
-                    </span>
-                    <span className="text-amber-600 flex-none text-xs font-medium">
-                      {g.avg.toFixed(1)}★
-                    </span>
-                  </li>
-                ))}
-              </ul>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 
-          {byAuthor.length > 0 && (
+          {formatTrends.length > 0 && (
             <div className="card">
-              <h2 className="font-semibold text-ink mb-1">Authors, by Avg Rating</h2>
-              <p className="text-xs text-stone-500 mb-3">
-                Authors with at least 2 rated books, best first.
-              </p>
-              <ul className="space-y-1.5">
-                {byAuthor.slice(0, 10).map((a) => (
-                  <li
-                    key={a.name}
-                    className="flex items-center justify-between gap-2 text-sm"
-                  >
-                    <span className="text-ink truncate">
-                      {a.name}
-                      <span className="text-stone-400 text-xs">
-                        {" "}
-                        ({a.count})
+              <h2 className="font-semibold text-ink mb-3">Format Trends Over Time</h2>
+              <div className="space-y-2.5">
+                {formatTrends.map((f) => (
+                  <div key={f.year}>
+                    <div className="flex items-center justify-between text-xs text-stone-500 mb-1">
+                      <span className="font-medium text-ink">{f.year}</span>
+                      <span>
+                        {f.physical} physical · {f.digital} digital
                       </span>
-                    </span>
-                    <span className="text-amber-600 flex-none text-xs font-medium">
-                      {a.avg.toFixed(1)}★
-                    </span>
-                  </li>
+                    </div>
+                    <div className="h-2.5 rounded-full overflow-hidden flex w-full bg-stone-100">
+                      {f.physical + f.digital > 0 && (
+                        <>
+                          <div
+                            className="h-full bg-brass"
+                            style={{
+                              width: `${(f.physical / (f.physical + f.digital)) * 100}%`,
+                            }}
+                            title={`Physical: ${f.physical}`}
+                          />
+                          <div
+                            className="h-full bg-sky-400"
+                            style={{
+                              width: `${(f.digital / (f.physical + f.digital)) * 100}%`,
+                            }}
+                            title={`Digital: ${f.digital}`}
+                          />
+                        </>
+                      )}
+                    </div>
+                  </div>
                 ))}
-              </ul>
+              </div>
+              <div className="flex items-center gap-4 mt-3 text-xs text-stone-500">
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block w-2.5 h-2.5 rounded-sm bg-brass" /> Physical
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block w-2.5 h-2.5 rounded-sm bg-sky-400" /> Digital
+                </span>
+              </div>
             </div>
           )}
         </div>
       )}
+
+      {seasonalPattern.some((p) => p.totalInMonth >= 3) && (
+        <div className="card">
+          <h2 className="font-semibold text-ink mb-1">Seasonal Genre Pattern</h2>
+          <p className="text-xs text-stone-500 mb-3">
+            Your most-read genre for each month, pooled across every year.
+          </p>
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+            {seasonalPattern.map((p) => {
+              const hasPattern = p.totalInMonth >= 3 && p.topGenre;
+              return (
+                <div
+                  key={p.month}
+                  className="rounded-md border border-stone-200 p-2 text-center"
+                  style={
+                    hasPattern
+                      ? {
+                          borderColor: colorFor(p.topGenre!),
+                          background: `${colorFor(p.topGenre!)}14`,
+                        }
+                      : undefined
+                  }
+                >
+                  <p className="text-xs font-semibold text-ink">{MONTH_NAMES_SHORT[p.month]}</p>
+                  <p className="text-[11px] text-stone-600 mt-1 leading-tight">
+                    {hasPattern ? p.topGenre : "—"}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RankedList({
+  title,
+  subtitle,
+  items,
+  limit,
+  dotColor,
+}: {
+  title: string;
+  subtitle: string;
+  items: RatingBreakdown[];
+  limit?: number;
+  dotColor?: (name: string) => string;
+}) {
+  const shown = limit ? items.slice(0, limit) : items;
+  return (
+    <div className="card">
+      <h2 className="font-semibold text-ink mb-1">{title}</h2>
+      <p className="text-xs text-stone-500 mb-3">{subtitle}</p>
+      <ul className="space-y-1.5">
+        {shown.map((item) => (
+          <li key={item.name} className="flex items-center justify-between gap-2 text-sm">
+            <span className="flex items-center gap-1.5 min-w-0">
+              {dotColor && (
+                <span
+                  className="inline-block w-2.5 h-2.5 rounded-sm flex-none"
+                  style={{ background: dotColor(item.name) }}
+                />
+              )}
+              <span className="text-ink truncate">{item.name}</span>
+              <span className="text-stone-400 flex-none text-xs">({item.count})</span>
+            </span>
+            <span className="text-amber-600 flex-none text-xs font-medium">
+              {item.avg.toFixed(1)}★
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
