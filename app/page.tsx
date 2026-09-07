@@ -10,9 +10,9 @@ import KanbanBoard from "@/components/KanbanBoard";
 import SearchFilterBar from "@/components/SearchFilterBar";
 import ReadingPanel from "@/components/ReadingPanel";
 import DiscoverPanel from "@/components/DiscoverPanel";
+import MilestonesPanel from "@/components/MilestonesPanel";
 import BarcodeScannerModal from "@/components/BarcodeScannerModal";
 import BookDetail from "@/components/BookDetail";
-import BookCover from "@/components/BookCover";
 import BookForm from "@/components/BookForm";
 import Modal from "@/components/Modal";
 import Skeleton from "@/components/Skeleton";
@@ -27,6 +27,7 @@ export default function DashboardPage() {
 
   const [readingOpen, setReadingOpen] = useState(false);
   const [discoverOpen, setDiscoverOpen] = useState(false);
+  const [milestonesOpen, setMilestonesOpen] = useState(false);
 
   const [scanOpen, setScanOpen] = useState(false);
   const [scanSeed, setScanSeed] = useState<Partial<Book> | null>(null);
@@ -221,24 +222,6 @@ export default function DashboardPage() {
       ? rated.reduce((sum, b) => sum + (b.my_rating || 0), 0) / rated.length
       : null;
 
-    // Year-over-year comparison — last year's same three headline numbers,
-    // so this year's pace has something to sit next to instead of floating
-    // in isolation.
-    const lastYear = currentYear - 1;
-    const finishedLastYear = finished.filter(
-      (b) => b.date_finished && new Date(b.date_finished).getFullYear() === lastYear
-    );
-    const pagesLastYear = finishedLastYear.reduce((sum, b) => sum + (b.pages || 0), 0);
-    const ratedLastYear = finishedLastYear.filter((b) => typeof b.my_rating === "number");
-    const avgRatingLastYear = ratedLastYear.length
-      ? ratedLastYear.reduce((sum, b) => sum + (b.my_rating || 0), 0) / ratedLastYear.length
-      : null;
-    const yearOverYear = {
-      books: { now: finishedThisYear.length, prev: finishedLastYear.length },
-      pages: { now: pagesThisYear, prev: pagesLastYear },
-      avgRating: { now: avgRating, prev: avgRatingLastYear },
-    };
-
     // On This Day — anything finished on today's month/day in an earlier
     // year. A once-a-year coincidence per book, so this is usually empty,
     // which is fine — it only needs to be a nice surprise when it isn't.
@@ -343,14 +326,6 @@ export default function DashboardPage() {
     }
     const personality = computePersonality();
 
-    // Forgotten favorites — highly-rated finishes that haven't been touched
-    // in a while (updated_at is the closest proxy we have to "last looked
-    // at"), as a gentle nudge to revisit an old favorite.
-    const forgottenFavorites = finished
-      .filter((b) => !b.is_reread && typeof b.my_rating === "number" && b.my_rating >= 4)
-      .sort((a, b) => new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime())
-      .slice(0, 3);
-
     const stats = {
       total: trackedList.length,
       finished: finished.length,
@@ -386,14 +361,11 @@ export default function DashboardPage() {
       stats,
       owned,
       formatBreakdown,
-      yearOverYear,
-      lastYear,
       onThisDay,
       justHitMilestone,
       upcomingMilestone,
       milestoneRemaining,
       personality,
-      forgottenFavorites,
     };
   }, [books]);
 
@@ -488,12 +460,15 @@ export default function DashboardPage() {
 
         <div className="flex items-center gap-2 shrink-0 ml-auto">
           <button
-            className="btn btn-secondary"
+            className="btn btn-primary"
             onClick={() => setScanOpen(true)}
             disabled={scanLookingUp}
             type="button"
           >
             {scanLookingUp ? "Looking up…" : "📷 Scan"}
+          </button>
+          <button className="btn btn-primary" onClick={() => setMilestonesOpen(true)} type="button">
+            🏆 Milestones
           </button>
           <button className="btn btn-primary" onClick={() => setDiscoverOpen(true)} type="button">
             🎲 Find Your Next Read
@@ -645,97 +620,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div className="grid sm:grid-cols-2 gap-4">
-        <div className="card">
-          <h2 className="font-semibold text-ink mb-3">
-            📈 {derived.currentYear} vs {derived.lastYear}
-          </h2>
-          <div className="space-y-2.5">
-            <YoyRow
-              label="Books"
-              now={derived.yearOverYear.books.now}
-              prev={derived.yearOverYear.books.prev}
-            />
-            <YoyRow
-              label="Pages"
-              now={derived.yearOverYear.pages.now}
-              prev={derived.yearOverYear.pages.prev}
-              format="pages"
-            />
-            <YoyRow
-              label="Avg Rating"
-              now={derived.yearOverYear.avgRating.now}
-              prev={derived.yearOverYear.avgRating.prev}
-              format="rating"
-            />
-          </div>
-        </div>
-
-        <div className="card">
-          <h2 className="font-semibold text-ink mb-2">🏆 Milestones</h2>
-          {derived.justHitMilestone ? (
-            <p className="text-sm text-amber-800 font-medium">
-              You just hit {derived.justHitMilestone} books finished!
-            </p>
-          ) : (
-            <>
-              <p className="text-sm text-stone-600">
-                {derived.milestoneRemaining} more book{derived.milestoneRemaining === 1 ? "" : "s"}{" "}
-                to your {derived.upcomingMilestone}th finish.
-              </p>
-              <div className="h-2 rounded-full bg-stone-100 overflow-hidden mt-2">
-                <div
-                  className="h-full bg-brass rounded-full"
-                  style={{
-                    width: `${Math.min(
-                      100,
-                      Math.round(
-                        ((derived.upcomingMilestone - derived.milestoneRemaining) /
-                          derived.upcomingMilestone) *
-                          100
-                      )
-                    )}%`,
-                  }}
-                />
-              </div>
-            </>
-          )}
-          {derived.personality && (
-            <div className="mt-4 pt-3 border-t border-stone-100">
-              <p className="text-xs uppercase tracking-wide text-stone-500 mb-1">
-                Reading Personality
-              </p>
-              <p className="font-semibold text-ink">{derived.personality.title}</p>
-              <p className="text-xs text-stone-500 mt-0.5">{derived.personality.blurb}</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {derived.forgottenFavorites.length > 0 && (
-        <div className="card">
-          <h2 className="font-semibold text-ink mb-1">💭 Forgotten Favorites</h2>
-          <p className="text-xs text-stone-500 mb-3">
-            Books you rated highly a while back — maybe it's time for a reread.
-          </p>
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-            {derived.forgottenFavorites.map((b) => (
-              <button
-                key={b.trello_id}
-                type="button"
-                onClick={() => setViewingBook(b)}
-                className="text-left"
-                title={b.title}
-              >
-                <BookCover book={b} className="w-full aspect-[2/3]" />
-                <p className="text-[11px] text-stone-600 mt-1 line-clamp-2">{b.title}</p>
-                <p className="text-amber-600 text-xs">{"★".repeat(b.my_rating!)}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
       <div className="space-y-3">
         <h2 className="font-semibold text-ink font-display">📋 Board</h2>
         <SearchFilterBar
@@ -800,10 +684,10 @@ export default function DashboardPage() {
       </div>
 
       <div className="flex flex-wrap justify-center gap-3">
-        <Link href="/year-in-review" className="btn btn-secondary">
+        <Link href="/year-in-review" className="btn btn-primary">
           📅 Year in Review
         </Link>
-        <Link href="/releases" className="btn btn-secondary">
+        <Link href="/releases" className="btn btn-primary">
           🔮 Upcoming Releases
         </Link>
         <ExportButton />
@@ -857,41 +741,16 @@ export default function DashboardPage() {
           onReadAgain={handleReadAgain}
         />
       )}
-    </div>
-  );
-}
 
-function YoyRow({
-  label,
-  now,
-  prev,
-  format,
-}: {
-  label: string;
-  now: number | null;
-  prev: number | null;
-  format?: "pages" | "rating";
-}) {
-  function fmt(v: number | null): string {
-    if (v === null) return "—";
-    if (format === "pages") return v.toLocaleString();
-    if (format === "rating") return `${v.toFixed(1)}★`;
-    return String(v);
-  }
-  const delta = now !== null && prev !== null ? now - prev : null;
-  return (
-    <div className="flex items-center justify-between text-sm">
-      <span className="text-stone-600">{label}</span>
-      <span className="flex items-center gap-2">
-        <span className="font-medium text-ink">{fmt(now)}</span>
-        <span className="text-stone-400 text-xs">vs {fmt(prev)}</span>
-        {delta !== null && delta !== 0 && (
-          <span className={delta > 0 ? "text-emerald-600 text-xs" : "text-red-500 text-xs"}>
-            {delta > 0 ? "▲" : "▼"}{" "}
-            {format === "rating" ? Math.abs(delta).toFixed(1) : Math.abs(delta).toLocaleString()}
-          </span>
-        )}
-      </span>
+      {milestonesOpen && (
+        <MilestonesPanel
+          justHitMilestone={derived.justHitMilestone}
+          upcomingMilestone={derived.upcomingMilestone}
+          milestoneRemaining={derived.milestoneRemaining}
+          personality={derived.personality}
+          onClose={() => setMilestonesOpen(false)}
+        />
+      )}
     </div>
   );
 }

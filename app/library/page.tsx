@@ -432,6 +432,15 @@ function LibraryInner() {
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-xl font-bold text-ink">Library</h1>
         <div className="flex items-center gap-2">
+          {incompleteBooks.length > 0 && (
+            <button
+              type="button"
+              onClick={jumpToIncomplete}
+              className="rounded-md border-2 border-amber-500 bg-amber-200 hover:bg-amber-300 transition-colors px-3 py-1.5 text-amber-950 font-bold text-sm"
+            >
+              ⚠️ Jump to Next Incomplete ({incompleteBooks.length})
+            </button>
+          )}
           <div className="flex rounded-md border border-stone-200 overflow-hidden">
             <button
               type="button"
@@ -454,11 +463,6 @@ function LibraryInner() {
               🖼️ Shelf
             </button>
           </div>
-          {incompleteBooks.length > 0 && (
-            <button className="btn btn-secondary" onClick={jumpToIncomplete}>
-              ⚠ Jump to Next Incomplete ({incompleteBooks.length})
-            </button>
-          )}
           <button
             className="btn btn-secondary"
             onClick={() => setScanOpen(true)}

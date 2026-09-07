@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/library", label: "Library" },
   { href: "/series", label: "Series" },
   { href: "/year-in-review", label: "Year in Review" },
+  { href: "/insights", label: "Insights" },
   { href: "/releases", label: "Upcoming Releases" },
 ];
 
@@ -43,6 +44,9 @@ export default function Nav() {
           ))}
         </nav>
         <div className="ml-auto flex items-center gap-3">
+          <Link href="/library?new=1" className="btn btn-primary">
+            + Add Book
+          </Link>
           <ThemeSwitcher />
           <button
             onClick={handleLogout}
@@ -51,9 +55,6 @@ export default function Nav() {
           >
             Log out
           </button>
-          <Link href="/library?new=1" className="btn btn-primary">
-            + Add Book
-          </Link>
         </div>
       </div>
     </header>
