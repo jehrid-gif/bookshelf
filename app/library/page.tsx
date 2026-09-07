@@ -71,7 +71,7 @@ function LibraryInner() {
   const [duplicatesOnly, setDuplicatesOnly] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-  const [view, setView] = useState<"table" | "shelf">("table");
+  const [view, setView] = useState<"table" | "shelf">("shelf");
   const [enriching, setEnriching] = useState(false);
   const [enrichProgress, setEnrichProgress] = useState<{ done: number; total: number } | null>(
     null
