@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import BookDetail from "@/components/BookDetail";
 import BookCover from "@/components/BookCover";
 import { SkeletonLines } from "@/components/Skeleton";
-import { computeSeriesStats } from "@/lib/seriesStats";
+import { computeSeriesStats, computeSeriesBinges } from "@/lib/seriesStats";
 import type { Book } from "@/lib/types";
 const BookDetailAny = BookDetail as any;
 
@@ -14,6 +14,24 @@ const STATUS_LABEL: Record<string, string> = {
   finished: "Finished",
   wishlist: "Wishlist",
 };
+
+// Turns a day count into the roughest unit that still reads naturally —
+// "3 years, 2 months" for a long series journey, "18 days" for a binge.
+function formatDuration(days: number): string {
+  if (days < 30) return `${days} day${days === 1 ? "" : "s"}`;
+  if (days < 365) {
+    const months = Math.max(1, Math.round(days / 30));
+    return `${months} month${months === 1 ? "" : "s"}`;
+  }
+  const years = Math.floor(days / 365);
+  const months = Math.round((days % 365) / 30);
+  const yearPart = `${years} year${years === 1 ? "" : "s"}`;
+  return months > 0 ? `${yearPart}, ${months} month${months === 1 ? "" : "s"}` : yearPart;
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", year: "numeric" });
+}
 
 export default function SeriesPage() {
   const [books, setBooks] = useState<Book[] | null>(null);
@@ -29,6 +47,7 @@ export default function SeriesPage() {
   }, []);
 
   const seriesStats = useMemo(() => (books ? computeSeriesStats(books) : []), [books]);
+  const seriesBinges = useMemo(() => (books ? computeSeriesBinges(books) : []), [books]);
 
   function applySaved(updated: Book) {
     setBooks((prev) =>
@@ -62,6 +81,27 @@ export default function SeriesPage() {
         then what's closest to finished.
       </p>
 
+      {seriesBinges.length > 0 && (
+        <div className="card">
+          <h2 className="font-semibold text-ink mb-1">🔥 Series Binges</h2>
+          <p className="text-xs text-stone-500 mb-3">
+            Series where you tore through multiple books back to back.
+          </p>
+          <ul className="space-y-1.5">
+            {seriesBinges.slice(0, 5).map((binge) => (
+              <li key={binge.series} className="text-sm text-stone-600">
+                You blitzed through{" "}
+                <span className="font-medium text-ink">
+                  {binge.count} books of {binge.series}
+                </span>{" "}
+                in {formatDuration(binge.days)} ({formatDate(binge.startDate)} –{" "}
+                {formatDate(binge.endDate)}).
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="space-y-3">
         {seriesStats.map((s) => {
           const isOpen = expanded === s.series;
@@ -94,6 +134,12 @@ export default function SeriesPage() {
                       style={{ width: `${s.percent}%` }}
                     />
                   </div>
+                  {s.percent === 100 && s.journeyDays !== null && (
+                    <p className="text-xs text-stone-500 mt-2">
+                      📖 Finished the whole series in {formatDuration(s.journeyDays)} (
+                      {formatDate(s.journeyStart!)} – {formatDate(s.journeyEnd!)})
+                    </p>
+                  )}
                 </div>
                 <p className="text-2xl font-bold text-ink flex-none">{s.percent}%</p>
               </button>
