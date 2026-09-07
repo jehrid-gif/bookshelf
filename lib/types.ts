@@ -126,6 +126,10 @@ export function isIncomplete(b: Book): boolean {
   // they're actually acquired, so they never count as "incomplete".
   if (b.status === "wishlist") return false;
   if (b.genre === null || b.pages === null) return true;
+  // A cover image applies to every format — physical or digital, a book
+  // still has cover art — so this one isn't gated on `hasPhysicalCopy`
+  // like cover_type below.
+  if (b.cover_url === null) return true;
   // Cover type only makes sense for a physical copy — an ebook has no
   // hardcover/softcover to record, so it's never flagged for lacking one.
   const hasPhysicalCopy = b.format === "physical" || b.format === "physical+ebook";

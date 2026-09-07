@@ -642,7 +642,7 @@ function LibraryInner() {
                   {isIncomplete(b) && (
                     <span
                       className="absolute -top-1 -right-1 text-xs"
-                      title="Missing genre, page count, or (for a physical copy) cover type"
+                      title="Missing genre, page count, cover image, or (for a physical copy) cover type"
                     >
                       ⚠️
                     </span>
@@ -689,7 +689,7 @@ function LibraryInner() {
                   <td className="px-3 py-2">
                     <div className="flex flex-col gap-0.5">
                       {isIncomplete(b) && (
-                        <span title="Missing genre, page count, or (for a physical copy) cover type">
+                        <span title="Missing genre, page count, cover image, or (for a physical copy) cover type">
                           ⚠️
                         </span>
                       )}

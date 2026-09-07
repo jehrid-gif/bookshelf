@@ -87,6 +87,7 @@ export default function BookForm({
   const [error, setError] = useState<string | null>(null);
   const [refetching, setRefetching] = useState(false);
   const [refetchMsg, setRefetchMsg] = useState<string | null>(null);
+  const [verifying, setVerifying] = useState(false);
   const [rereading, setRereading] = useState(false);
   const isEdit = !!book;
   const allowsCoverType = form.format === "physical" || form.format === "physical+ebook";
@@ -181,6 +182,26 @@ export default function BookForm({
     }
   }
 
+  // Confirms the current cover/description/ISBN are fine as-is (usually
+  // after fixing them by hand) without re-running the Google Books search —
+  // Refetch can't do this on its own since it always re-scores against a
+  // fresh lookup, which may not agree with a manual fix.
+  async function handleVerify() {
+    if (!book) return;
+    setVerifying(true);
+    setRefetchMsg(null);
+    try {
+      const res = await fetch(`/api/books/${book.trello_id}/verify`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to mark verified");
+      onSaved(data as Book);
+    } catch (err: any) {
+      setRefetchMsg(err.message);
+    } finally {
+      setVerifying(false);
+    }
+  }
+
   async function handleReadAgain() {
     if (!book) return;
     if (
@@ -250,14 +271,27 @@ export default function BookForm({
             </p>
             {refetchMsg && <p className="text-xs text-stone-600 mt-0.5">{refetchMsg}</p>}
           </div>
-          <button
-            type="button"
-            className="btn btn-secondary flex-none"
-            onClick={handleRefetch}
-            disabled={refetching}
-          >
-            {refetching ? "Checking…" : "🔍 Refetch"}
-          </button>
+          <div className="flex flex-col gap-1.5 flex-none">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleRefetch}
+              disabled={refetching || verifying}
+            >
+              {refetching ? "Checking…" : "🔍 Refetch"}
+            </button>
+            {book?.enrichment_status && book.enrichment_status !== "matched" && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleVerify}
+                disabled={refetching || verifying}
+                title="Already fixed the cover/description yourself? This clears the flag without changing them."
+              >
+                {verifying ? "Saving…" : "✓ Mark Verified"}
+              </button>
+            )}
+          </div>
         </div>
       )}
 
