@@ -4,9 +4,55 @@ import { useEffect, useMemo, useState } from "react";
 import BookDetail from "@/components/BookDetail";
 import BookCover from "@/components/BookCover";
 import { SkeletonLines } from "@/components/Skeleton";
+import ReorderableSection from "@/components/ReorderableSection";
+import { useSectionOrder } from "@/lib/useSectionOrder";
 import type { Book, LengthCategory } from "@/lib/types";
 import { LENGTH_CATEGORIES } from "@/lib/types";
 const BookDetailAny = BookDetail as any;
+
+// Every box on this page is independently reorderable (the "↕ Reorder"
+// toggle) with the chosen order persisted server-side per
+// lib/useSectionOrder. This is the shipped order and id for each box;
+// "full"-span boxes take the whole row, everything else shares a row two
+// at a time in a flowing grid (whichever box is hidden this run, e.g. no
+// rereads logged yet, is simply skipped — the rest reflow to fill the gap).
+const DEFAULT_ORDER = [
+  "yoy",
+  "forgotten",
+  "fastest",
+  "slowest",
+  "longest",
+  "shortest",
+  "mostRead",
+  "rereads",
+  "genreRating",
+  "authorRating",
+  "moodRating",
+  "worldRating",
+  "starDist",
+  "formatTrends",
+  "lengthBreakdown",
+  "seasonalPattern",
+];
+const SECTION_LABELS: Record<string, string> = {
+  yoy: "Year vs. Year",
+  forgotten: "Forgotten Favorites",
+  fastest: "Fastest Read",
+  slowest: "Slowest Read",
+  longest: "Longest Read",
+  shortest: "Shortest Read",
+  mostRead: "Most-Read Authors",
+  rereads: "Comfort Rereads",
+  genreRating: "Genres by Rating",
+  authorRating: "Authors by Rating",
+  moodRating: "Moods by Rating",
+  worldRating: "Worlds by Rating",
+  starDist: "Star Rating Distribution",
+  formatTrends: "Format Trends",
+  lengthBreakdown: "Book Length Breakdown",
+  seasonalPattern: "Seasonal Genre Pattern",
+};
+const FULL_SPAN_SECTIONS = new Set(["lengthBreakdown", "seasonalPattern"]);
 
 const MONTH_NAMES_SHORT = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
@@ -332,6 +378,8 @@ export default function InsightsPage() {
   const [books, setBooks] = useState<Book[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [viewing, setViewing] = useState<Book | null>(null);
+  const [reordering, setReordering] = useState(false);
+  const { order, move, reset } = useSectionOrder("insights", DEFAULT_ORDER);
 
   useEffect(() => {
     fetch("/api/books")
@@ -381,367 +429,389 @@ export default function InsightsPage() {
     return <SkeletonLines />;
   }
 
-  return (
-    <div className="space-y-4">
-      <h1 className="text-xl font-bold text-ink">Insights</h1>
-      <p className="text-sm text-stone-500">
-        Stats and patterns across your whole library, not tied to any one year.
-      </p>
-
-      <div className="grid sm:grid-cols-2 gap-4">
-        <div className="card">
-          <h2 className="font-semibold text-ink mb-3">
-            📈 {yoy.currentYear} vs {yoy.lastYear}
-          </h2>
-          <div className="space-y-2.5">
-            <YoyRow label="Books" now={yoy.data.books.now} prev={yoy.data.books.prev} />
-            <YoyRow
-              label="Pages"
-              now={yoy.data.pages.now}
-              prev={yoy.data.pages.prev}
-              format="pages"
-            />
-            <YoyRow
-              label="Avg Rating"
-              now={yoy.data.avgRating.now}
-              prev={yoy.data.avgRating.prev}
-              format="rating"
-            />
-          </div>
+  const sectionNodes: Record<string, React.ReactNode> = {
+    yoy: (
+      <div className="card">
+        <h2 className="font-semibold text-ink mb-3">
+          📈 {yoy.currentYear} vs {yoy.lastYear}
+        </h2>
+        <div className="space-y-2.5">
+          <YoyRow label="Books" now={yoy.data.books.now} prev={yoy.data.books.prev} />
+          <YoyRow
+            label="Pages"
+            now={yoy.data.pages.now}
+            prev={yoy.data.pages.prev}
+            format="pages"
+          />
+          <YoyRow
+            label="Avg Rating"
+            now={yoy.data.avgRating.now}
+            prev={yoy.data.avgRating.prev}
+            format="rating"
+          />
         </div>
-
-        {forgottenFavorites.length > 0 && (
-          <div className="card">
-            <h2 className="font-semibold text-ink mb-1">💭 Forgotten Favorites</h2>
-            <p className="text-xs text-stone-500 mb-3">
-              Books you rated highly a while back — maybe it's time for a reread.
-            </p>
-            <div className="grid grid-cols-3 gap-3">
-              {forgottenFavorites.map((b) => (
-                <button
-                  key={b.trello_id}
-                  type="button"
-                  onClick={() => setViewing(b)}
-                  className="text-left"
-                  title={b.title}
-                >
-                  <BookCover book={b} className="w-full aspect-[2/3]" />
-                  <p className="text-[11px] text-stone-600 mt-1 line-clamp-2">{b.title}</p>
-                  <p className="text-amber-600 text-xs">{"★".repeat(b.my_rating!)}</p>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
+    ),
 
-      {(allTimeExtremes.fastest || allTimeExtremes.slowest) && (
-        <div className="grid sm:grid-cols-2 gap-3">
-          {allTimeExtremes.fastest && (
-            <button
-              type="button"
-              onClick={() => setViewing(allTimeExtremes.fastest!.book)}
-              className="card text-left hover:bg-parchment/60 transition-colors flex items-center gap-3"
-            >
-              <BookCover book={allTimeExtremes.fastest.book} className="w-12 h-16 flex-none" />
-              <div className="min-w-0">
-                <p className="text-xs uppercase tracking-wide text-stone-500">
-                  ⚡ Fastest Read (All-Time)
-                </p>
-                <p className="font-medium text-ink truncate">
-                  {allTimeExtremes.fastest.book.title}
-                </p>
-                <p className="text-sm text-stone-500">
-                  {allTimeExtremes.fastest.days} day{allTimeExtremes.fastest.days === 1 ? "" : "s"}
-                </p>
-              </div>
-            </button>
-          )}
-          {allTimeExtremes.slowest && (
-            <button
-              type="button"
-              onClick={() => setViewing(allTimeExtremes.slowest!.book)}
-              className="card text-left hover:bg-parchment/60 transition-colors flex items-center gap-3"
-            >
-              <BookCover book={allTimeExtremes.slowest.book} className="w-12 h-16 flex-none" />
-              <div className="min-w-0">
-                <p className="text-xs uppercase tracking-wide text-stone-500">
-                  🐢 Slowest Read (All-Time)
-                </p>
-                <p className="font-medium text-ink truncate">
-                  {allTimeExtremes.slowest.book.title}
-                </p>
-                <p className="text-sm text-stone-500">
-                  {allTimeExtremes.slowest.days} day{allTimeExtremes.slowest.days === 1 ? "" : "s"}
-                </p>
-              </div>
-            </button>
-          )}
-        </div>
-      )}
-
-      {(allTimeLengthExtremes.longest || allTimeLengthExtremes.shortest) && (
-        <div className="grid sm:grid-cols-2 gap-3">
-          {allTimeLengthExtremes.longest && (
-            <button
-              type="button"
-              onClick={() => setViewing(allTimeLengthExtremes.longest!.book)}
-              className="card text-left hover:bg-parchment/60 transition-colors flex items-center gap-3"
-            >
-              <BookCover book={allTimeLengthExtremes.longest.book} className="w-12 h-16 flex-none" />
-              <div className="min-w-0">
-                <p className="text-xs uppercase tracking-wide text-stone-500">
-                  📚 Longest Read (All-Time)
-                </p>
-                <p className="font-medium text-ink truncate">
-                  {allTimeLengthExtremes.longest.book.title}
-                </p>
-                <p className="text-sm text-stone-500">
-                  {allTimeLengthExtremes.longest.pages.toLocaleString()} pages
-                </p>
-              </div>
-            </button>
-          )}
-          {allTimeLengthExtremes.shortest && (
-            <button
-              type="button"
-              onClick={() => setViewing(allTimeLengthExtremes.shortest!.book)}
-              className="card text-left hover:bg-parchment/60 transition-colors flex items-center gap-3"
-            >
-              <BookCover book={allTimeLengthExtremes.shortest.book} className="w-12 h-16 flex-none" />
-              <div className="min-w-0">
-                <p className="text-xs uppercase tracking-wide text-stone-500">
-                  📄 Shortest Read (All-Time)
-                </p>
-                <p className="font-medium text-ink truncate">
-                  {allTimeLengthExtremes.shortest.book.title}
-                </p>
-                <p className="text-sm text-stone-500">
-                  {allTimeLengthExtremes.shortest.pages.toLocaleString()} pages
-                </p>
-              </div>
-            </button>
-          )}
-        </div>
-      )}
-
-      {(mostReadAuthors.length > 0 || rereadStats.totalRereads > 0) && (
-        <div className="grid sm:grid-cols-2 gap-3">
-          {mostReadAuthors.length > 0 && (
-            <div className="card">
-              <h2 className="font-semibold text-ink mb-1">Most-Read Authors</h2>
-              <p className="text-xs text-stone-500 mb-3">
-                By finish count, not rating — who you keep coming back to.
-              </p>
-              <ul className="space-y-1.5">
-                {mostReadAuthors.map((a) => (
-                  <li key={a.name} className="flex items-center justify-between gap-2 text-sm">
-                    <span className="text-ink truncate">{a.name}</span>
-                    <span className="text-stone-500 flex-none text-xs font-medium">
-                      {a.count} book{a.count === 1 ? "" : "s"}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {rereadStats.totalRereads > 0 && (
-            <div className="card">
-              <h2 className="font-semibold text-ink mb-3">💭 Comfort Rereads</h2>
-              <p className="text-2xl font-bold text-ink">{rereadStats.totalRereads}</p>
-              <p className="text-xs uppercase tracking-wide text-stone-500 mb-3">
-                Total Times Reread
-              </p>
-              {rereadStats.mostRereadTitle && rereadStats.mostRereadCount >= 2 && (
-                <p className="text-sm text-stone-600">
-                  Most reread:{" "}
-                  <span className="font-medium text-ink">{rereadStats.mostRereadTitle}</span> (
-                  {rereadStats.mostRereadCount}×)
-                </p>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {(byGenre.length > 0 || byAuthor.length > 0) && (
-        <div className="grid sm:grid-cols-2 gap-3">
-          {byGenre.length > 0 && (
-            <RankedList
-              title="Genres, by Avg Rating"
-              subtitle="Genres with at least 2 rated books, best first."
-              items={byGenre}
-              dotColor={colorFor}
-            />
-          )}
-          {byAuthor.length > 0 && (
-            <RankedList
-              title="Authors, by Avg Rating"
-              subtitle="Authors with at least 2 rated books, best first."
-              items={byAuthor}
-              limit={10}
-            />
-          )}
-        </div>
-      )}
-
-      {(byMood.length > 0 || byWorld.length > 0) && (
-        <div className="grid sm:grid-cols-2 gap-3">
-          {byMood.length > 0 && (
-            <RankedList
-              title="Moods, by Avg Rating"
-              subtitle="Moods with at least 2 rated books, best first."
-              items={byMood}
-              limit={10}
-            />
-          )}
-          {byWorld.length > 0 && (
-            <RankedList
-              title="Worlds, by Avg Rating"
-              subtitle="Worlds with at least 2 rated books, best first."
-              items={byWorld}
-            />
-          )}
-        </div>
-      )}
-
-      {(ratingDistribution.some((r) => r.count > 0) || formatTrends.length > 0) && (
-        <div className="grid sm:grid-cols-2 gap-3">
-          {ratingDistribution.some((r) => r.count > 0) && (
-            <div className="card">
-              <h2 className="font-semibold text-ink mb-3">Star Rating Distribution</h2>
-              <div className="space-y-2">
-                {[5, 4, 3, 2, 1].map((star) => {
-                  const entry = ratingDistribution.find((r) => r.rating === star)!;
-                  const max = Math.max(...ratingDistribution.map((r) => r.count), 1);
-                  return (
-                    <div key={star} className="flex items-center gap-2 text-sm">
-                      <span className="w-8 text-stone-600 flex-none">{star}★</span>
-                      <div className="flex-1 h-3 rounded-full bg-stone-100 overflow-hidden">
-                        <div
-                          className="h-full bg-brass rounded-full"
-                          style={{ width: `${(entry.count / max) * 100}%` }}
-                        />
-                      </div>
-                      <span className="w-8 text-right text-stone-500 text-xs flex-none">
-                        {entry.count}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {formatTrends.length > 0 && (
-            <div className="card">
-              <h2 className="font-semibold text-ink mb-3">Format Trends Over Time</h2>
-              <div className="space-y-2.5">
-                {formatTrends.map((f) => (
-                  <div key={f.year}>
-                    <div className="flex items-center justify-between text-xs text-stone-500 mb-1">
-                      <span className="font-medium text-ink">{f.year}</span>
-                      <span>
-                        {f.physical} physical · {f.digital} digital
-                      </span>
-                    </div>
-                    <div className="h-2.5 rounded-full overflow-hidden flex w-full bg-stone-100">
-                      {f.physical + f.digital > 0 && (
-                        <>
-                          <div
-                            className="h-full bg-brass"
-                            style={{
-                              width: `${(f.physical / (f.physical + f.digital)) * 100}%`,
-                            }}
-                            title={`Physical: ${f.physical}`}
-                          />
-                          <div
-                            className="h-full bg-sky-400"
-                            style={{
-                              width: `${(f.digital / (f.physical + f.digital)) * 100}%`,
-                            }}
-                            title={`Digital: ${f.digital}`}
-                          />
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="flex items-center gap-4 mt-3 text-xs text-stone-500">
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block w-2.5 h-2.5 rounded-sm bg-brass" /> Physical
-                </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="inline-block w-2.5 h-2.5 rounded-sm bg-sky-400" /> Digital
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {lengthBreakdown.some((l) => l.count > 0) && (
+    forgotten:
+      forgottenFavorites.length > 0 ? (
         <div className="card">
-          <h2 className="font-semibold text-ink mb-1">Book Length Breakdown</h2>
+          <h2 className="font-semibold text-ink mb-1">💭 Forgotten Favorites</h2>
           <p className="text-xs text-stone-500 mb-3">
-            Quick (under 250pg) to Epic (600pg+), across every book you've finished.
+            Books you rated highly a while back — maybe it's time for a reread.
           </p>
-          <div className="space-y-2">
-            {lengthBreakdown.map((l) => {
-              const max = Math.max(...lengthBreakdown.map((x) => x.count), 1);
-              return (
-                <div key={l.category} className="flex items-center gap-2 text-sm">
-                  <span className="w-16 text-stone-600 flex-none">{l.category}</span>
-                  <div className="flex-1 h-3 rounded-full bg-stone-100 overflow-hidden">
-                    <div
-                      className="h-full bg-brass rounded-full"
-                      style={{ width: `${(l.count / max) * 100}%` }}
-                    />
-                  </div>
-                  <span className="w-8 text-right text-stone-500 text-xs flex-none">
-                    {l.count}
+          <div className="grid grid-cols-3 gap-3">
+            {forgottenFavorites.map((b) => (
+              <button
+                key={b.trello_id}
+                type="button"
+                onClick={() => setViewing(b)}
+                className="text-left"
+                title={b.title}
+              >
+                <BookCover book={b} className="w-full aspect-[2/3]" />
+                <p className="text-[11px] text-stone-600 mt-1 line-clamp-2">{b.title}</p>
+                <p className="text-amber-600 text-xs">{"★".repeat(b.my_rating!)}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null,
+
+    fastest: allTimeExtremes.fastest ? (
+      <button
+        type="button"
+        onClick={() => setViewing(allTimeExtremes.fastest!.book)}
+        className="card text-left hover:bg-parchment/60 transition-colors flex items-center gap-3"
+      >
+        <BookCover book={allTimeExtremes.fastest.book} className="w-12 h-16 flex-none" />
+        <div className="min-w-0">
+          <p className="text-xs uppercase tracking-wide text-stone-500">
+            ⚡ Fastest Read (All-Time)
+          </p>
+          <p className="font-medium text-ink truncate">{allTimeExtremes.fastest.book.title}</p>
+          <p className="text-sm text-stone-500">
+            {allTimeExtremes.fastest.days} day{allTimeExtremes.fastest.days === 1 ? "" : "s"}
+          </p>
+        </div>
+      </button>
+    ) : null,
+
+    slowest: allTimeExtremes.slowest ? (
+      <button
+        type="button"
+        onClick={() => setViewing(allTimeExtremes.slowest!.book)}
+        className="card text-left hover:bg-parchment/60 transition-colors flex items-center gap-3"
+      >
+        <BookCover book={allTimeExtremes.slowest.book} className="w-12 h-16 flex-none" />
+        <div className="min-w-0">
+          <p className="text-xs uppercase tracking-wide text-stone-500">
+            🐢 Slowest Read (All-Time)
+          </p>
+          <p className="font-medium text-ink truncate">{allTimeExtremes.slowest.book.title}</p>
+          <p className="text-sm text-stone-500">
+            {allTimeExtremes.slowest.days} day{allTimeExtremes.slowest.days === 1 ? "" : "s"}
+          </p>
+        </div>
+      </button>
+    ) : null,
+
+    longest: allTimeLengthExtremes.longest ? (
+      <button
+        type="button"
+        onClick={() => setViewing(allTimeLengthExtremes.longest!.book)}
+        className="card text-left hover:bg-parchment/60 transition-colors flex items-center gap-3"
+      >
+        <BookCover book={allTimeLengthExtremes.longest.book} className="w-12 h-16 flex-none" />
+        <div className="min-w-0">
+          <p className="text-xs uppercase tracking-wide text-stone-500">
+            📚 Longest Read (All-Time)
+          </p>
+          <p className="font-medium text-ink truncate">{allTimeLengthExtremes.longest.book.title}</p>
+          <p className="text-sm text-stone-500">
+            {allTimeLengthExtremes.longest.pages.toLocaleString()} pages
+          </p>
+        </div>
+      </button>
+    ) : null,
+
+    shortest: allTimeLengthExtremes.shortest ? (
+      <button
+        type="button"
+        onClick={() => setViewing(allTimeLengthExtremes.shortest!.book)}
+        className="card text-left hover:bg-parchment/60 transition-colors flex items-center gap-3"
+      >
+        <BookCover book={allTimeLengthExtremes.shortest.book} className="w-12 h-16 flex-none" />
+        <div className="min-w-0">
+          <p className="text-xs uppercase tracking-wide text-stone-500">
+            📄 Shortest Read (All-Time)
+          </p>
+          <p className="font-medium text-ink truncate">
+            {allTimeLengthExtremes.shortest.book.title}
+          </p>
+          <p className="text-sm text-stone-500">
+            {allTimeLengthExtremes.shortest.pages.toLocaleString()} pages
+          </p>
+        </div>
+      </button>
+    ) : null,
+
+    mostRead:
+      mostReadAuthors.length > 0 ? (
+        <div className="card">
+          <h2 className="font-semibold text-ink mb-1">Most-Read Authors</h2>
+          <p className="text-xs text-stone-500 mb-3">
+            By finish count, not rating — who you keep coming back to.
+          </p>
+          <ul className="space-y-1.5">
+            {mostReadAuthors.map((a) => (
+              <li key={a.name} className="flex items-center justify-between gap-2 text-sm">
+                <span className="text-ink truncate">{a.name}</span>
+                <span className="text-stone-500 flex-none text-xs font-medium">
+                  {a.count} book{a.count === 1 ? "" : "s"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null,
+
+    rereads:
+      rereadStats.totalRereads > 0 ? (
+        <div className="card">
+          <h2 className="font-semibold text-ink mb-3">💭 Comfort Rereads</h2>
+          <p className="text-2xl font-bold text-ink">{rereadStats.totalRereads}</p>
+          <p className="text-xs uppercase tracking-wide text-stone-500 mb-3">Total Times Reread</p>
+          {rereadStats.mostRereadTitle && rereadStats.mostRereadCount >= 2 && (
+            <p className="text-sm text-stone-600">
+              Most reread:{" "}
+              <span className="font-medium text-ink">{rereadStats.mostRereadTitle}</span> (
+              {rereadStats.mostRereadCount}×)
+            </p>
+          )}
+        </div>
+      ) : null,
+
+    genreRating:
+      byGenre.length > 0 ? (
+        <RankedList
+          title="Genres, by Avg Rating"
+          subtitle="Genres with at least 2 rated books, best first."
+          items={byGenre}
+          dotColor={colorFor}
+        />
+      ) : null,
+
+    authorRating:
+      byAuthor.length > 0 ? (
+        <RankedList
+          title="Authors, by Avg Rating"
+          subtitle="Authors with at least 2 rated books, best first."
+          items={byAuthor}
+          limit={10}
+        />
+      ) : null,
+
+    moodRating:
+      byMood.length > 0 ? (
+        <RankedList
+          title="Moods, by Avg Rating"
+          subtitle="Moods with at least 2 rated books, best first."
+          items={byMood}
+          limit={10}
+        />
+      ) : null,
+
+    worldRating:
+      byWorld.length > 0 ? (
+        <RankedList
+          title="Worlds, by Avg Rating"
+          subtitle="Worlds with at least 2 rated books, best first."
+          items={byWorld}
+        />
+      ) : null,
+
+    starDist: ratingDistribution.some((r) => r.count > 0) ? (
+      <div className="card">
+        <h2 className="font-semibold text-ink mb-3">Star Rating Distribution</h2>
+        <div className="space-y-2">
+          {[5, 4, 3, 2, 1].map((star) => {
+            const entry = ratingDistribution.find((r) => r.rating === star)!;
+            const max = Math.max(...ratingDistribution.map((r) => r.count), 1);
+            return (
+              <div key={star} className="flex items-center gap-2 text-sm">
+                <span className="w-8 text-stone-600 flex-none">{star}★</span>
+                <div className="flex-1 h-3 rounded-full bg-stone-100 overflow-hidden">
+                  <div
+                    className="h-full bg-brass rounded-full"
+                    style={{ width: `${(entry.count / max) * 100}%` }}
+                  />
+                </div>
+                <span className="w-8 text-right text-stone-500 text-xs flex-none">
+                  {entry.count}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    ) : null,
+
+    formatTrends:
+      formatTrends.length > 0 ? (
+        <div className="card">
+          <h2 className="font-semibold text-ink mb-3">Format Trends Over Time</h2>
+          <div className="space-y-2.5">
+            {formatTrends.map((f) => (
+              <div key={f.year}>
+                <div className="flex items-center justify-between text-xs text-stone-500 mb-1">
+                  <span className="font-medium text-ink">{f.year}</span>
+                  <span>
+                    {f.physical} physical · {f.digital} digital
                   </span>
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {seasonalPattern.some((p) => p.totalInMonth >= 3) && (
-        <div className="card">
-          <h2 className="font-semibold text-ink mb-1">Seasonal Genre Pattern</h2>
-          <p className="text-xs text-stone-500 mb-3">
-            Your most-read genre for each month, pooled across every year.
-          </p>
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
-            {seasonalPattern.map((p) => {
-              const hasPattern = p.totalInMonth >= 3 && p.topGenre;
-              return (
-                <div
-                  key={p.month}
-                  className="rounded-md border border-stone-200 p-2 text-center"
-                  style={
-                    hasPattern
-                      ? {
-                          borderColor: colorFor(p.topGenre!),
-                          background: `${colorFor(p.topGenre!)}14`,
-                        }
-                      : undefined
-                  }
-                >
-                  <p className="text-xs font-semibold text-ink">{MONTH_NAMES_SHORT[p.month]}</p>
-                  <p className="text-[11px] text-stone-600 mt-1 leading-tight">
-                    {hasPattern ? p.topGenre : "—"}
-                  </p>
+                <div className="h-2.5 rounded-full overflow-hidden flex w-full bg-stone-100">
+                  {f.physical + f.digital > 0 && (
+                    <>
+                      <div
+                        className="h-full bg-brass"
+                        style={{
+                          width: `${(f.physical / (f.physical + f.digital)) * 100}%`,
+                        }}
+                        title={`Physical: ${f.physical}`}
+                      />
+                      <div
+                        className="h-full bg-sky-400"
+                        style={{
+                          width: `${(f.digital / (f.physical + f.digital)) * 100}%`,
+                        }}
+                        title={`Digital: ${f.digital}`}
+                      />
+                    </>
+                  )}
                 </div>
-              );
-            })}
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-4 mt-3 text-xs text-stone-500">
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-brass" /> Physical
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-sky-400" /> Digital
+            </span>
           </div>
         </div>
-      )}
+      ) : null,
+
+    lengthBreakdown: lengthBreakdown.some((l) => l.count > 0) ? (
+      <div className="card">
+        <h2 className="font-semibold text-ink mb-1">Book Length Breakdown</h2>
+        <p className="text-xs text-stone-500 mb-3">
+          Quick (under 250pg) to Epic (600pg+), across every book you've finished.
+        </p>
+        <div className="space-y-2">
+          {lengthBreakdown.map((l) => {
+            const max = Math.max(...lengthBreakdown.map((x) => x.count), 1);
+            return (
+              <div key={l.category} className="flex items-center gap-2 text-sm">
+                <span className="w-16 text-stone-600 flex-none">{l.category}</span>
+                <div className="flex-1 h-3 rounded-full bg-stone-100 overflow-hidden">
+                  <div
+                    className="h-full bg-brass rounded-full"
+                    style={{ width: `${(l.count / max) * 100}%` }}
+                  />
+                </div>
+                <span className="w-8 text-right text-stone-500 text-xs flex-none">{l.count}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    ) : null,
+
+    seasonalPattern: seasonalPattern.some((p) => p.totalInMonth >= 3) ? (
+      <div className="card">
+        <h2 className="font-semibold text-ink mb-1">Seasonal Genre Pattern</h2>
+        <p className="text-xs text-stone-500 mb-3">
+          Your most-read genre for each month, pooled across every year.
+        </p>
+        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+          {seasonalPattern.map((p) => {
+            const hasPattern = p.totalInMonth >= 3 && p.topGenre;
+            return (
+              <div
+                key={p.month}
+                className="rounded-md border border-stone-200 p-2 text-center"
+                style={
+                  hasPattern
+                    ? {
+                        borderColor: colorFor(p.topGenre!),
+                        background: `${colorFor(p.topGenre!)}14`,
+                      }
+                    : undefined
+                }
+              >
+                <p className="text-xs font-semibold text-ink">{MONTH_NAMES_SHORT[p.month]}</p>
+                <p className="text-[11px] text-stone-600 mt-1 leading-tight">
+                  {hasPattern ? p.topGenre : "—"}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    ) : null,
+  };
+
+  const visibleIds = order.filter((id) => sectionNodes[id] !== null && sectionNodes[id] !== undefined);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-ink">Insights</h1>
+          <p className="text-sm text-stone-500">
+            Stats and patterns across your whole library, not tied to any one year.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-none">
+          {reordering && (
+            <button type="button" className="text-xs text-stone-500 hover:underline" onClick={reset}>
+              Reset
+            </button>
+          )}
+          <button
+            type="button"
+            className={
+              "text-xs rounded-md px-2 py-1 border transition-colors " +
+              (reordering
+                ? "border-brass bg-brass/10 text-brass"
+                : "border-stone-300 text-stone-600 hover:bg-stone-100")
+            }
+            onClick={() => setReordering((r) => !r)}
+          >
+            {reordering ? "Done" : "↕ Reorder"}
+          </button>
+        </div>
+      </div>
+
+      <div className="grid sm:grid-cols-2 gap-3">
+        {visibleIds.map((id) => (
+          <ReorderableSection
+            key={id}
+            label={SECTION_LABELS[id] || id}
+            reordering={reordering}
+            onUp={() => move(id, "up", visibleIds)}
+            onDown={() => move(id, "down", visibleIds)}
+            disableUp={visibleIds.indexOf(id) === 0}
+            disableDown={visibleIds.indexOf(id) === visibleIds.length - 1}
+            className={FULL_SPAN_SECTIONS.has(id) ? "sm:col-span-2" : undefined}
+          >
+            {sectionNodes[id]}
+          </ReorderableSection>
+        ))}
+      </div>
 
       {viewing && (
         <BookDetailAny
