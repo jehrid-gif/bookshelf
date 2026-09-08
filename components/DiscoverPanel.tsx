@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Book } from "@/lib/types";
 import { WORLDS, GENRES, MOODS, FORMATS, LENGTH_CATEGORIES } from "@/lib/types";
 import {
@@ -8,6 +8,12 @@ import {
   computeSuggestionPool,
   type ReadNextEntry,
 } from "@/lib/readNext";
+import {
+  computeTasteMatches,
+  computeMovement,
+  type MatchMovement,
+  type TasteSnapshotEntry,
+} from "@/lib/tasteMatch";
 import SidePanel from "./SidePanel";
 import BookDetail from "./BookDetail";
 import BookCover from "./BookCover";
@@ -38,11 +44,51 @@ export default function DiscoverPanel({
   onBookDeleted: (id: string) => void;
   onBookAdded?: (b: Book) => void;
 }) {
-  const [tab, setTab] = useState<"next" | "suggestions" | "dice">("next");
+  const [tab, setTab] = useState<"next" | "suggestions" | "dice" | "match">("next");
   const [viewing, setViewing] = useState<Book | null>(null);
 
   const readNext = useMemo(() => computeReadNext(books), [books]);
   const pool = useMemo(() => computeSuggestionPool(books), [books]);
+
+  // Best Match tab — top 10 unread books ranked against your own rated
+  // history. Movement markers compare against a snapshot saved server-side
+  // the last time this list was viewed (any device), so "up/down/new" means
+  // "since I last actually looked," not just "since page load."
+  const tasteResult = useMemo(() => computeTasteMatches(books, 10), [books]);
+  const [matchMovement, setMatchMovement] = useState<Map<string, MatchMovement>>(new Map());
+  const matchSeqRef = useRef(0);
+
+  useEffect(() => {
+    if (tab !== "match" || tasteResult.matches.length === 0) return;
+    let cancelled = false;
+    const seq = ++matchSeqRef.current;
+    (async () => {
+      try {
+        const res = await fetch("/api/taste-match/snapshot");
+        const previous: TasteSnapshotEntry[] = res.ok ? await res.json() : [];
+        if (cancelled || seq !== matchSeqRef.current) return;
+        setMatchMovement(computeMovement(tasteResult.matches, previous));
+        const entries = tasteResult.matches.map((m, i) => ({
+          book_id: m.book.trello_id,
+          rank: i + 1,
+          score: m.score,
+        }));
+        await fetch("/api/taste-match/snapshot", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ entries }),
+        });
+      } catch {
+        // Best-effort — movement markers just won't show this time, and
+        // the underlying ranking (which doesn't depend on the snapshot)
+        // is unaffected.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, tasteResult]);
 
   // Suggestions tab — a small curated, filterable, reshuffleable sample.
   const [suggWorld, setSuggWorld] = useState("");
@@ -138,6 +184,18 @@ export default function DiscoverPanel({
           }
         >
           🎲 Find Your Next Read
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("match")}
+          className={
+            "px-3 py-2 text-sm font-medium border-b-2 -mb-px " +
+            (tab === "match"
+              ? "border-brass text-brass"
+              : "border-transparent text-stone-500 hover:text-ink")
+          }
+        >
+          🎯 Best Match
         </button>
       </div>
 
@@ -331,6 +389,83 @@ export default function DiscoverPanel({
               </div>
             </button>
           )}
+        </div>
+      )}
+
+      {tab === "match" && (
+        <div className="space-y-3">
+          <p className="text-sm text-stone-500">
+            Your top 10 unread books, ranked by how well they match what you've actually rated
+            highly — genre, author, mood, and world, weighted by how much history backs each one
+            up. Recalculated fresh every time you open this, so a run of new ratings can shuffle
+            the list.
+          </p>
+
+          {tasteResult.insufficientData && (
+            <p className="text-sm text-stone-500">{tasteResult.insufficientData}</p>
+          )}
+
+          {!tasteResult.insufficientData && tasteResult.matches.length === 0 && (
+            <p className="text-sm text-stone-500">
+              Nothing in your to-read pile overlaps yet with a genre, author, mood, or world
+              you've actually rated.
+            </p>
+          )}
+
+          <ul className="space-y-3">
+            {tasteResult.matches.map((m, i) => {
+              const movement = matchMovement.get(m.book.trello_id);
+              return (
+                <li
+                  key={m.book.trello_id}
+                  className="border-b border-stone-100 pb-3 last:border-0 flex gap-3"
+                >
+                  <span className="text-sm font-semibold text-stone-400 w-5 flex-none text-right pt-1">
+                    {i + 1}
+                  </span>
+                  <BookCover
+                    book={m.book}
+                    className="w-10 h-14 flex-none"
+                    padding="p-1"
+                    textSize="text-[6px]"
+                    lineClamp="line-clamp-4"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        onClick={() => setViewing(m.book)}
+                        type="button"
+                        className="font-medium text-ink hover:text-brass hover:underline text-left"
+                      >
+                        {m.book.title}
+                      </button>
+                      {movement?.kind === "new" && (
+                        <span className="badge bg-sky-100 text-sky-800 text-[10px]">✨ New</span>
+                      )}
+                      {movement?.kind === "up" && (
+                        <span
+                          className="text-emerald-600 text-xs font-semibold"
+                          title={`Up ${movement.amount} spot${movement.amount === 1 ? "" : "s"} since you last checked`}
+                        >
+                          ▲{movement.amount}
+                        </span>
+                      )}
+                      {movement?.kind === "down" && (
+                        <span
+                          className="text-red-500 text-xs font-semibold"
+                          title={`Down ${movement.amount} spot${movement.amount === 1 ? "" : "s"} since you last checked`}
+                        >
+                          ▼{movement.amount}
+                        </span>
+                      )}
+                    </div>
+                    {m.book.author && <p className="text-xs text-stone-500">{m.book.author}</p>}
+                    <p className="text-xs text-stone-600 mt-1">{m.why}</p>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
 
