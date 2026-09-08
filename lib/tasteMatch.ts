@@ -72,9 +72,36 @@ function factorSentence(f: TasteFactor): string {
   }
 }
 
+// Genre only has 6 possible values and the broadest mood tags apply to
+// dozens of books each, so for a library concentrated in one or two genres
+// those factors are true of almost everything and say the least about why
+// THIS book specifically made the list. Author and world are far more
+// specific (an author match is unique to that person; a world tag applies
+// to a small slice of the library), so they lead the explanation whenever
+// present — even if genre happened to score marginally higher. This only
+// changes what gets said, never the ranking itself, which still uses the
+// plain weighted score across every factor.
+const EXPLANATION_TYPE_PRIORITY: Record<FactorType, number> = {
+  author: 0,
+  world: 1,
+  mood: 2,
+  genre: 3,
+};
+
+function explanationOrder(factors: TasteFactor[]): TasteFactor[] {
+  return [...factors].sort((a, b) => {
+    const byType = EXPLANATION_TYPE_PRIORITY[a.type] - EXPLANATION_TYPE_PRIORITY[b.type];
+    if (byType !== 0) return byType;
+    // Within the same type, the tag with fewer supporting books is the more
+    // distinguishing one to lead with — "2 books tagged Romance" says more
+    // about this specific pick than "63 books are Science Fiction."
+    return a.count - b.count;
+  });
+}
+
 function buildWhy(book: Book, factors: TasteFactor[]): string {
   if (factors.length === 0) return "";
-  const top = factors.slice(0, 3);
+  const top = explanationOrder(factors).slice(0, 3);
   const clauses = top.map(factorSentence);
   let sentence: string;
   if (clauses.length === 1) {
@@ -213,7 +240,8 @@ export function computeMovement(
   matches: TasteMatch[],
   previous: TasteSnapshotEntry[]
 ): Map<string, MatchMovement> {
-  const prevRank = new Map(previous.map((p) => [p.book_id, p.rank]));
+  const prevRank = new Map<string, number>();
+  for (const p of previous) prevRank.set(p.book_id, p.rank);
   const result = new Map<string, MatchMovement>();
   matches.forEach((m, i) => {
     const rank = i + 1;
