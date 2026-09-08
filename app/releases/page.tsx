@@ -54,6 +54,16 @@ export default function ReleasesPage() {
   const [newAuthor, setNewAuthor] = useState("");
   const [addingAuthor, setAddingAuthor] = useState(false);
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  function toggleExpanded(id: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   async function loadReleases() {
     try {
@@ -266,16 +276,20 @@ export default function ReleasesPage() {
             title={`📅 Upcoming (${upcoming.length})`}
             releases={upcoming}
             busyIds={busyIds}
+            expandedIds={expandedIds}
             onAdd={handleAddToWishlist}
             onDismiss={handleDismiss}
+            onToggleExpanded={toggleExpanded}
             emptyText="Nothing forthcoming yet — try Refresh, or check back after tomorrow's automatic check."
           />
           <ReleaseSection
             title={`🆕 Recently Released (${recent.length})`}
             releases={recent}
             busyIds={busyIds}
+            expandedIds={expandedIds}
             onAdd={handleAddToWishlist}
             onDismiss={handleDismiss}
+            onToggleExpanded={toggleExpanded}
             emptyText="Nothing released in the last month from your watched authors or Black Library."
           />
         </>
@@ -284,19 +298,27 @@ export default function ReleasesPage() {
   );
 }
 
+// Below this length a 3-line clamp at the card's width won't actually cut
+// anything off, so the toggle only appears when there's really more to see.
+const DESCRIPTION_CLAMP_THRESHOLD = 200;
+
 function ReleaseSection({
   title,
   releases,
   busyIds,
+  expandedIds,
   onAdd,
   onDismiss,
+  onToggleExpanded,
   emptyText,
 }: {
   title: string;
   releases: UpcomingRelease[];
   busyIds: Set<string>;
+  expandedIds: Set<string>;
   onAdd: (r: UpcomingRelease) => void;
   onDismiss: (r: UpcomingRelease) => void;
+  onToggleExpanded: (id: string) => void;
   emptyText: string;
 }) {
   return (
@@ -342,7 +364,25 @@ function ReleaseSection({
               )}
             </div>
             {r.description && (
-              <p className="text-xs text-stone-500 line-clamp-3">{r.description}</p>
+              <div>
+                <p
+                  className={
+                    "text-xs text-stone-500" +
+                    (expandedIds.has(r.google_id) ? "" : " line-clamp-3")
+                  }
+                >
+                  {r.description}
+                </p>
+                {r.description.length > DESCRIPTION_CLAMP_THRESHOLD && (
+                  <button
+                    type="button"
+                    className="text-xs text-brass hover:underline mt-0.5"
+                    onClick={() => onToggleExpanded(r.google_id)}
+                  >
+                    {expandedIds.has(r.google_id) ? "less" : "more"}
+                  </button>
+                )}
+              </div>
             )}
             <div className="flex items-center justify-between pt-2 mt-auto border-t border-stone-100">
               <button
