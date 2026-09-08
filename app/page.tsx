@@ -471,7 +471,7 @@ export default function DashboardPage() {
             🏆 Milestones
           </button>
           <button className="btn btn-primary" onClick={() => setDiscoverOpen(true)} type="button">
-            🎲 Find Your Next Read
+            🧭 Discover
           </button>
         </div>
       </div>

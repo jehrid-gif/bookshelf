@@ -44,11 +44,72 @@ export default function DiscoverPanel({
   onBookDeleted: (id: string) => void;
   onBookAdded?: (b: Book) => void;
 }) {
-  const [tab, setTab] = useState<"next" | "suggestions" | "dice" | "match">("next");
+  const [tab, setTab] = useState<"next" | "roll" | "match">("next");
   const [viewing, setViewing] = useState<Book | null>(null);
 
   const readNext = useMemo(() => computeReadNext(books), [books]);
   const pool = useMemo(() => computeSuggestionPool(books), [books]);
+
+  // Roll the Dice tab — one shared filter set over the same eligible pool,
+  // with two ways to draw from it: a reshuffleable sample of 3, or a single
+  // committed pick. These used to be two separate tabs (Suggestions / Find
+  // Your Next Read) that differed only in filters offered and how many
+  // books came back — merged into one since there wasn't a real reason to
+  // pick between them.
+  const [rollWorld, setRollWorld] = useState("");
+  const [rollGenre, setRollGenre] = useState("");
+  const [rollMood, setRollMood] = useState("");
+  const [rollLength, setRollLength] = useState("");
+  const [rollFormat, setRollFormat] = useState("");
+  const [rollMode, setRollMode] = useState<"three" | "one">("three");
+  const [rollShown, setRollShown] = useState<ReadNextEntry[]>([]);
+  const [rollPick, setRollPick] = useState<Book | null>(null);
+  const [rollError, setRollError] = useState<string | null>(null);
+
+  const rollFiltered = useMemo(() => {
+    return pool.filter((entry) => {
+      const b = entry.book;
+      if (rollWorld && !b.worlds.includes(rollWorld)) return false;
+      if (rollGenre && b.genre !== rollGenre) return false;
+      if (rollMood && !b.moods.includes(rollMood)) return false;
+      if (rollLength && b.length_category !== rollLength) return false;
+      if (rollFormat && b.format !== rollFormat) return false;
+      return true;
+    });
+  }, [pool, rollWorld, rollGenre, rollMood, rollLength, rollFormat]);
+
+  function showThree(source: ReadNextEntry[]) {
+    setRollMode("three");
+    if (source.length === 0) {
+      setRollShown([]);
+      setRollError("Nothing eligible matches those filters yet.");
+      return;
+    }
+    setRollError(null);
+    setRollShown(shuffle(source).slice(0, SUGGESTION_COUNT));
+  }
+
+  function rollOne() {
+    setRollMode("one");
+    if (rollFiltered.length === 0) {
+      setRollPick(null);
+      setRollError("No eligible books match those filters right now.");
+      return;
+    }
+    setRollError(null);
+    const choice = rollFiltered[Math.floor(Math.random() * rollFiltered.length)];
+    setRollPick(choice.book);
+  }
+
+  // Redraw the "3 picks" sample whenever the filters (or pool) change and
+  // we're in that mode — Reshuffle is for "show me something else" within
+  // the same filters. A committed single Roll deliberately does NOT
+  // auto-reroll when a filter changes; that stays put until you click Roll
+  // again, same as before the tabs merged.
+  useEffect(() => {
+    if (rollMode === "three") showThree(rollFiltered);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rollFiltered]);
 
   // Best Match tab — top 10 unread books ranked against your own rated
   // history. Movement markers compare against a snapshot saved server-side
@@ -56,7 +117,17 @@ export default function DiscoverPanel({
   // "since I last actually looked," not just "since page load."
   const tasteResult = useMemo(() => computeTasteMatches(books, 10), [books]);
   const [matchMovement, setMatchMovement] = useState<Map<string, MatchMovement>>(new Map());
+  const [expandedWhy, setExpandedWhy] = useState<Set<string>>(new Set());
   const matchSeqRef = useRef(0);
+
+  function toggleWhy(id: string) {
+    setExpandedWhy((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   useEffect(() => {
     if (tab !== "match" || tasteResult.matches.length === 0) return;
@@ -90,113 +161,35 @@ export default function DiscoverPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, tasteResult]);
 
-  // Suggestions tab — a small curated, filterable, reshuffleable sample.
-  const [suggWorld, setSuggWorld] = useState("");
-  const [suggGenre, setSuggGenre] = useState("");
-  const [suggMood, setSuggMood] = useState("");
-  const [suggShown, setSuggShown] = useState<ReadNextEntry[]>([]);
+  const TAB_LABEL: Record<typeof tab, string> = {
+    next: "📋 Read Next",
+    roll: "🎲 Roll the Dice",
+    match: "🎯 Best Match",
+  };
 
-  const suggFiltered = useMemo(() => {
-    return pool.filter((entry) => {
-      const b = entry.book;
-      if (suggWorld && !b.worlds.includes(suggWorld)) return false;
-      if (suggGenre && b.genre !== suggGenre) return false;
-      if (suggMood && !b.moods.includes(suggMood)) return false;
-      return true;
-    });
-  }, [pool, suggWorld, suggGenre, suggMood]);
-
-  function reshuffle(source: ReadNextEntry[] = suggFiltered) {
-    setSuggShown(shuffle(source).slice(0, SUGGESTION_COUNT));
-  }
-
-  // Redraw the curated sample whenever the filters (or the underlying pool)
-  // change, so switching World/Genre/Mood updates the picks without needing
-  // an extra click — Reshuffle is for "show me something else" within the
-  // same filters.
-  useEffect(() => {
-    reshuffle(suggFiltered);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [suggFiltered]);
-
-  // Find Your Next Read tab — one random pick from the same eligible pool.
-  const [diceWorld, setDiceWorld] = useState("");
-  const [diceGenre, setDiceGenre] = useState("");
-  const [diceLength, setDiceLength] = useState("");
-  const [diceFormat, setDiceFormat] = useState("");
-  const [pick, setPick] = useState<Book | null>(null);
-  const [diceError, setDiceError] = useState<string | null>(null);
-
-  function roll() {
-    setDiceError(null);
-    const candidates = pool.filter((entry) => {
-      const b = entry.book;
-      if (diceWorld && !b.worlds.includes(diceWorld)) return false;
-      if (diceGenre && b.genre !== diceGenre) return false;
-      if (diceLength && b.length_category !== diceLength) return false;
-      if (diceFormat && b.format !== diceFormat) return false;
-      return true;
-    });
-    if (candidates.length === 0) {
-      setPick(null);
-      setDiceError("No eligible books match those filters right now.");
-      return;
-    }
-    const choice = candidates[Math.floor(Math.random() * candidates.length)];
-    setPick(choice.book);
+  function TabButton({ id }: { id: "next" | "roll" | "match" }) {
+    return (
+      <button
+        type="button"
+        onClick={() => setTab(id)}
+        className={
+          "px-3 py-2 text-sm font-medium border-b-2 -mb-px " +
+          (tab === id
+            ? "border-brass text-brass"
+            : "border-transparent text-stone-500 hover:text-ink")
+        }
+      >
+        {TAB_LABEL[id]}
+      </button>
+    );
   }
 
   return (
     <SidePanel title="Discover" onClose={onClose}>
       <div className="flex gap-1 mb-4 border-b border-stone-200 flex-wrap">
-        <button
-          type="button"
-          onClick={() => setTab("next")}
-          className={
-            "px-3 py-2 text-sm font-medium border-b-2 -mb-px " +
-            (tab === "next"
-              ? "border-brass text-brass"
-              : "border-transparent text-stone-500 hover:text-ink")
-          }
-        >
-          📋 Read Next
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("suggestions")}
-          className={
-            "px-3 py-2 text-sm font-medium border-b-2 -mb-px " +
-            (tab === "suggestions"
-              ? "border-brass text-brass"
-              : "border-transparent text-stone-500 hover:text-ink")
-          }
-        >
-          ✨ Suggestions
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("dice")}
-          className={
-            "px-3 py-2 text-sm font-medium border-b-2 -mb-px " +
-            (tab === "dice"
-              ? "border-brass text-brass"
-              : "border-transparent text-stone-500 hover:text-ink")
-          }
-        >
-          🎲 Find Your Next Read
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("match")}
-          className={
-            "px-3 py-2 text-sm font-medium border-b-2 -mb-px " +
-            (tab === "match"
-              ? "border-brass text-brass"
-              : "border-transparent text-stone-500 hover:text-ink")
-          }
-        >
-          🎯 Best Match
-        </button>
+        <TabButton id="next" />
+        <TabButton id="roll" />
+        <TabButton id="match" />
       </div>
 
       {tab === "next" && (
@@ -232,19 +225,14 @@ export default function DiscoverPanel({
         </div>
       )}
 
-      {tab === "suggestions" && (
+      {tab === "roll" && (
         <div className="space-y-3">
           <p className="text-sm text-stone-500">
-            A handful of catered picks — narrow by world, genre, or mood, or just reshuffle.
+            Narrow by world, genre, mood, length, and/or format, or leave them all open for
+            anything — then reshuffle a small sample or roll for one committed pick.
           </p>
-          <div className="grid grid-cols-1 gap-2">
-            <select
-              className="input"
-              value={suggWorld}
-              onChange={(e) => {
-                setSuggWorld(e.target.value);
-              }}
-            >
+          <div className="grid grid-cols-2 gap-2">
+            <select className="input" value={rollWorld} onChange={(e) => setRollWorld(e.target.value)}>
               <option value="">Any world</option>
               {WORLDS.map((w) => (
                 <option key={w} value={w}>
@@ -252,13 +240,7 @@ export default function DiscoverPanel({
                 </option>
               ))}
             </select>
-            <select
-              className="input"
-              value={suggGenre}
-              onChange={(e) => {
-                setSuggGenre(e.target.value);
-              }}
-            >
+            <select className="input" value={rollGenre} onChange={(e) => setRollGenre(e.target.value)}>
               <option value="">Any genre</option>
               {GENRES.map((g) => (
                 <option key={g} value={g}>
@@ -266,13 +248,7 @@ export default function DiscoverPanel({
                 </option>
               ))}
             </select>
-            <select
-              className="input"
-              value={suggMood}
-              onChange={(e) => {
-                setSuggMood(e.target.value);
-              }}
-            >
+            <select className="input" value={rollMood} onChange={(e) => setRollMood(e.target.value)}>
               <option value="">Any mood</option>
               {MOODS.map((m) => (
                 <option key={m} value={m}>
@@ -280,70 +256,7 @@ export default function DiscoverPanel({
                 </option>
               ))}
             </select>
-            <button
-              className="btn btn-secondary"
-              type="button"
-              onClick={() => reshuffle(suggFiltered)}
-            >
-              🔀 Reshuffle
-            </button>
-          </div>
-
-          {suggFiltered.length === 0 && (
-            <p className="text-sm text-stone-500">Nothing eligible matches those filters yet.</p>
-          )}
-          <ul className="space-y-3">
-            {suggShown.map((entry) => (
-              <li key={entry.book.trello_id} className="border-b border-stone-100 pb-3 last:border-0 flex gap-3">
-                <BookCover
-                  book={entry.book}
-                  className="w-10 h-14 flex-none"
-                  padding="p-1"
-                  textSize="text-[6px]"
-                  lineClamp="line-clamp-4"
-                />
-                <div className="min-w-0">
-                  <button
-                    onClick={() => setViewing(entry.book)}
-                    type="button"
-                    className="font-medium text-ink hover:text-brass hover:underline text-left block"
-                  >
-                    {entry.book.title}
-                  </button>
-                  {entry.book.author && (
-                    <p className="text-xs text-stone-500">{entry.book.author}</p>
-                  )}
-                  <p className="text-xs text-stone-500">{entry.reason}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {tab === "dice" && (
-        <div className="space-y-3">
-          <p className="text-sm text-stone-500">
-            Narrow by world, genre, length, and/or format, or leave them all open for anything.
-          </p>
-          <div className="flex flex-col gap-2">
-            <select className="input" value={diceWorld} onChange={(e) => setDiceWorld(e.target.value)}>
-              <option value="">Any world</option>
-              {WORLDS.map((w) => (
-                <option key={w} value={w}>
-                  {w}
-                </option>
-              ))}
-            </select>
-            <select className="input" value={diceGenre} onChange={(e) => setDiceGenre(e.target.value)}>
-              <option value="">Any genre</option>
-              {GENRES.map((g) => (
-                <option key={g} value={g}>
-                  {g}
-                </option>
-              ))}
-            </select>
-            <select className="input" value={diceLength} onChange={(e) => setDiceLength(e.target.value)}>
+            <select className="input" value={rollLength} onChange={(e) => setRollLength(e.target.value)}>
               <option value="">Any length</option>
               {LENGTH_CATEGORIES.map((l) => (
                 <option key={l} value={l}>
@@ -351,7 +264,11 @@ export default function DiscoverPanel({
                 </option>
               ))}
             </select>
-            <select className="input" value={diceFormat} onChange={(e) => setDiceFormat(e.target.value)}>
+            <select
+              className="input col-span-2"
+              value={rollFormat}
+              onChange={(e) => setRollFormat(e.target.value)}
+            >
               <option value="">Any format</option>
               {FORMATS.map((f) => (
                 <option key={f} value={f}>
@@ -359,31 +276,74 @@ export default function DiscoverPanel({
                 </option>
               ))}
             </select>
-            <button className="btn btn-primary" onClick={roll} type="button">
-              🎲 Roll
+          </div>
+          <div className="flex gap-2">
+            <button
+              className="btn btn-secondary flex-1"
+              type="button"
+              onClick={() => showThree(rollFiltered)}
+            >
+              🔀 Show Me 3
+            </button>
+            <button className="btn btn-primary flex-1" type="button" onClick={rollOne}>
+              🎲 Roll One
             </button>
           </div>
-          {diceError && <p className="text-sm text-stone-500">{diceError}</p>}
-          {pick && (
+
+          {rollError && <p className="text-sm text-stone-500">{rollError}</p>}
+
+          {!rollError && rollMode === "three" && (
+            <ul className="space-y-3">
+              {rollShown.map((entry) => (
+                <li
+                  key={entry.book.trello_id}
+                  className="border-b border-stone-100 pb-3 last:border-0 flex gap-3"
+                >
+                  <BookCover
+                    book={entry.book}
+                    className="w-10 h-14 flex-none"
+                    padding="p-1"
+                    textSize="text-[6px]"
+                    lineClamp="line-clamp-4"
+                  />
+                  <div className="min-w-0">
+                    <button
+                      onClick={() => setViewing(entry.book)}
+                      type="button"
+                      className="font-medium text-ink hover:text-brass hover:underline text-left block"
+                    >
+                      {entry.book.title}
+                    </button>
+                    {entry.book.author && (
+                      <p className="text-xs text-stone-500">{entry.book.author}</p>
+                    )}
+                    <p className="text-xs text-stone-500">{entry.reason}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {!rollError && rollMode === "one" && rollPick && (
             <button
-              onClick={() => setViewing(pick)}
+              onClick={() => setViewing(rollPick)}
               type="button"
-              className="flex gap-3 w-full text-left mt-1 rounded-md bg-parchment/60 border border-stone-200 px-3 py-2 hover:border-stone-300 transition-colors"
+              className="flex gap-3 w-full text-left rounded-md bg-parchment/60 border border-stone-200 px-3 py-2 hover:border-stone-300 transition-colors"
             >
               <BookCover
-                book={pick}
+                book={rollPick}
                 className="w-12 h-16 flex-none"
                 padding="p-1"
                 textSize="text-[7px]"
                 lineClamp="line-clamp-4"
               />
               <div className="min-w-0">
-                <p className="font-medium text-ink">{pick.title}</p>
-                {pick.author && <p className="text-sm text-stone-600">{pick.author}</p>}
-                {pick.series && (
+                <p className="font-medium text-ink">{rollPick.title}</p>
+                {rollPick.author && <p className="text-sm text-stone-600">{rollPick.author}</p>}
+                {rollPick.series && (
                   <p className="text-xs text-stone-500">
-                    {pick.series}
-                    {pick.series_index ? ` #${pick.series_index}` : ""}
+                    {rollPick.series}
+                    {rollPick.series_index ? ` #${rollPick.series_index}` : ""}
                   </p>
                 )}
               </div>
@@ -396,9 +356,8 @@ export default function DiscoverPanel({
         <div className="space-y-3">
           <p className="text-sm text-stone-500">
             Your top 10 unread books, ranked by how well they match what you've actually rated
-            highly — genre, author, mood, and world, weighted by how much history backs each one
-            up. Recalculated fresh every time you open this, so a run of new ratings can shuffle
-            the list.
+            highly. Recalculated fresh every time you open this, so a run of new ratings can
+            shuffle the list.
           </p>
 
           {tasteResult.insufficientData && (
@@ -415,6 +374,7 @@ export default function DiscoverPanel({
           <ul className="space-y-3">
             {tasteResult.matches.map((m, i) => {
               const movement = matchMovement.get(m.book.trello_id);
+              const expanded = expandedWhy.has(m.book.trello_id);
               return (
                 <li
                   key={m.book.trello_id}
@@ -460,7 +420,18 @@ export default function DiscoverPanel({
                       )}
                     </div>
                     {m.book.author && <p className="text-xs text-stone-500">{m.book.author}</p>}
-                    <p className="text-xs text-stone-600 mt-1">{m.why}</p>
+                    <p className="text-xs text-stone-600 mt-1">
+                      {expanded ? m.why : m.whyShort}{" "}
+                      {m.why !== m.whyShort && (
+                        <button
+                          type="button"
+                          onClick={() => toggleWhy(m.book.trello_id)}
+                          className="text-stone-400 hover:text-brass underline decoration-dotted underline-offset-2"
+                        >
+                          {expanded ? "less" : "why?"}
+                        </button>
+                      )}
+                    </p>
                   </div>
                 </li>
               );
@@ -476,12 +447,12 @@ export default function DiscoverPanel({
           onSaved={(b) => {
             onBookUpdated(b);
             setViewing(b);
-            if (pick && pick.trello_id === b.trello_id) setPick(b);
+            if (rollPick && rollPick.trello_id === b.trello_id) setRollPick(b);
           }}
           onDeleted={(id) => {
             onBookDeleted(id);
             setViewing(null);
-            if (pick && pick.trello_id === id) setPick(null);
+            if (rollPick && rollPick.trello_id === id) setRollPick(null);
           }}
           onReadAgain={
             onBookAdded &&

@@ -27,7 +27,8 @@ export interface TasteMatch {
   reason: string; // the eligibility reason from the underlying suggestion pool entry
   score: number; // roughly on the same 1-5 scale as star ratings
   factors: TasteFactor[]; // strongest first
-  why: string; // full natural-language explanation
+  why: string; // full natural-language explanation, every contributing factor + caveats
+  whyShort: string; // single clause, just the single most distinguishing factor
 }
 
 export interface TasteMatchResult {
@@ -99,29 +100,42 @@ function explanationOrder(factors: TasteFactor[]): TasteFactor[] {
   });
 }
 
-function buildWhy(book: Book, factors: TasteFactor[]): string {
-  if (factors.length === 0) return "";
-  const top = explanationOrder(factors).slice(0, 3);
+function capitalize(s: string): string {
+  return s.length ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+// Builds both a full explanation (every contributing factor, plus honesty
+// caveats about unproven authors or thin samples) and a one-clause summary
+// of just the single most distinguishing factor — the list view leads with
+// the short version so ten rows of full paragraphs don't turn into a wall
+// of text, with the full version available on demand.
+function buildWhy(book: Book, factors: TasteFactor[]): { why: string; whyShort: string } {
+  if (factors.length === 0) return { why: "", whyShort: "" };
+  const ordered = explanationOrder(factors);
+  const top = ordered.slice(0, 3);
   const clauses = top.map(factorSentence);
-  let sentence: string;
+
+  const whyShort = `${capitalize(clauses[0])}.`;
+
+  let why: string;
   if (clauses.length === 1) {
-    sentence = `This made the list because ${clauses[0]}.`;
+    why = `This made the list because ${clauses[0]}.`;
   } else if (clauses.length === 2) {
-    sentence = `This made the list because ${clauses[0]}, and ${clauses[1]}.`;
+    why = `This made the list because ${clauses[0]}, and ${clauses[1]}.`;
   } else {
-    sentence = `This made the list because ${clauses[0]}, ${clauses[1]}, and ${clauses[2]}.`;
+    why = `This made the list because ${clauses[0]}, ${clauses[1]}, and ${clauses[2]}.`;
   }
   // Call out when the author is new — honest about which part of the match
   // is proven vs. unproven, rather than implying the whole pick is a sure bet.
   const hasAuthorFactor = factors.some((f) => f.type === "author");
   if (!hasAuthorFactor && book.author) {
-    sentence += ` You haven't rated a book by ${book.author} before, so that part's a bit of a leap.`;
+    why += ` You haven't rated a book by ${book.author} before, so that part's a bit of a leap.`;
   }
   const lowSample = top.find((f) => f.count === 1);
   if (lowSample) {
-    sentence += ` Worth noting: the ${lowSample.label} match is based on just one book so far.`;
+    why += ` Worth noting: the ${lowSample.label} match is based on just one book so far.`;
   }
-  return sentence;
+  return { why, whyShort };
 }
 
 /**
@@ -201,13 +215,15 @@ export function computeTasteMatches(books: Book[], limit = 10): TasteMatchResult
 
     factors.sort((a, b2) => b2.weighted - a.weighted);
     const score = factors.reduce((s, f) => s + f.weighted, 0) / factors.length;
+    const { why, whyShort } = buildWhy(b, factors);
 
     return {
       book: b,
       reason: entry.reason,
       score,
       factors,
-      why: buildWhy(b, factors),
+      why,
+      whyShort,
     };
   }
 
