@@ -503,6 +503,27 @@ export default function DashboardPage() {
             value={derived.finishedThisYear.length}
             label={`Finished ${derived.currentYear}`}
             href={`/year-in-review?year=${derived.currentYear}`}
+            extra={
+              goal ? (
+                <div
+                  className="h-1 rounded-full bg-stone-100 overflow-hidden mt-1.5"
+                  title={`${Math.min(
+                    100,
+                    Math.round((derived.finishedThisYear.length / goal.goal) * 100)
+                  )}% of your ${derived.currentYear} reading goal (${goal.goal} books) — see Milestones for details`}
+                >
+                  <div
+                    className="h-full bg-brass rounded-full"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        Math.round((derived.finishedThisYear.length / goal.goal) * 100)
+                      )}%`,
+                    }}
+                  />
+                </div>
+              ) : undefined
+            }
           />
           <LedgerCell value={derived.pagesThisYear.toLocaleString()} label={`Pages ${derived.currentYear}`} />
           <LedgerCell
@@ -542,52 +563,6 @@ export default function DashboardPage() {
             run it
           </p>
         </Link>
-      )}
-
-      {goal !== undefined && (
-        <div className="card">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="font-semibold text-ink">🎯 {derived.currentYear} Reading Goal</h2>
-            <button
-              className="text-sm text-brass hover:underline"
-              onClick={handleSetGoal}
-              disabled={savingGoal}
-              type="button"
-            >
-              {goal ? "Edit" : "Set a goal"}
-            </button>
-          </div>
-          {goal ? (
-            <>
-              <div className="flex items-baseline justify-between mb-1">
-                <p className="text-sm text-stone-600">
-                  {derived.finishedThisYear.length} of {goal.goal} books
-                </p>
-                <p className="text-xs text-stone-500">
-                  {Math.min(100, Math.round((derived.finishedThisYear.length / goal.goal) * 100))}%
-                </p>
-              </div>
-              <div className="h-2.5 rounded-full bg-stone-100 overflow-hidden">
-                <div
-                  className="h-full bg-brass rounded-full transition-all"
-                  style={{
-                    width: `${Math.min(
-                      100,
-                      Math.round((derived.finishedThisYear.length / goal.goal) * 100)
-                    )}%`,
-                  }}
-                />
-              </div>
-              {derived.finishedThisYear.length >= goal.goal && (
-                <p className="text-xs text-emerald-700 mt-1.5">🎉 Goal reached!</p>
-              )}
-            </>
-          ) : (
-            <p className="text-sm text-stone-500">
-              Set a goal to track your progress toward {derived.currentYear}&rsquo;s reading.
-            </p>
-          )}
-        </div>
       )}
 
       {derived.onThisDay.length > 0 && (
@@ -744,10 +719,16 @@ export default function DashboardPage() {
 
       {milestonesOpen && (
         <MilestonesPanel
+          books={books}
           justHitMilestone={derived.justHitMilestone}
           upcomingMilestone={derived.upcomingMilestone}
           milestoneRemaining={derived.milestoneRemaining}
           personality={derived.personality}
+          goal={goal}
+          savingGoal={savingGoal}
+          onSetGoal={handleSetGoal}
+          currentYear={derived.currentYear}
+          finishedThisYear={derived.finishedThisYear.length}
           onClose={() => setMilestonesOpen(false)}
         />
       )}
@@ -772,15 +753,22 @@ function LedgerCell({
   value,
   label,
   href,
+  extra,
 }: {
   value: number | string;
   label: string;
   href?: string;
+  // Optional small addition rendered below the label — used only by the
+  // Finished-this-year cell for its reading-goal thermometer, so every
+  // other ledger cell keeps its exact existing appearance by simply not
+  // passing this.
+  extra?: React.ReactNode;
 }) {
   const inner = (
     <>
       <p className="text-lg font-semibold text-ink font-mono tabular-nums">{value}</p>
       <p className="text-[10px] uppercase tracking-wide text-stone-500 mt-0.5">{label}</p>
+      {extra}
     </>
   );
   const className =
