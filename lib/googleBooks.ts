@@ -12,9 +12,14 @@ export interface GoogleVolume {
   isbn13: string | null;
   isbn10: string | null;
   pageCount: number | null;
+  language: string | null;
 }
 
-async function searchVolumes(q: string, maxResults = 20): Promise<GoogleVolume[]> {
+async function searchVolumes(
+  q: string,
+  maxResults = 20,
+  opts: { englishOnly?: boolean } = {}
+): Promise<GoogleVolume[]> {
   const apiKey = process.env.GOOGLE_BOOKS_API_KEY;
   const params = new URLSearchParams({
     q,
@@ -23,6 +28,11 @@ async function searchVolumes(q: string, maxResults = 20): Promise<GoogleVolume[]
     printType: "books",
   });
   if (apiKey) params.set("key", apiKey);
+  // Google's own steer toward one language — it does cut down on foreign
+  // editions, but Google documents this as advisory ("not all books in the
+  // results will be in the specified language"), so it's not the real
+  // guarantee here; the filter below is.
+  if (opts.englishOnly) params.set("langRestrict", "en");
 
   const res = await fetch(`${GOOGLE_BOOKS_ENDPOINT}?${params.toString()}`, {
     cache: "no-store",
@@ -35,7 +45,7 @@ async function searchVolumes(q: string, maxResults = 20): Promise<GoogleVolume[]
   }
   const data = await res.json();
   const items: any[] = data.items || [];
-  return items.map((item) => {
+  const volumes = items.map((item) => {
     const info = item.volumeInfo || {};
     const identifiers: any[] = info.industryIdentifiers || [];
     const rawThumb: string | null =
@@ -54,8 +64,17 @@ async function searchVolumes(q: string, maxResults = 20): Promise<GoogleVolume[]
       isbn13: identifiers.find((i) => i.type === "ISBN_13")?.identifier || null,
       isbn10: identifiers.find((i) => i.type === "ISBN_10")?.identifier || null,
       pageCount: typeof info.pageCount === "number" ? info.pageCount : null,
+      language: (info.language as string) || null,
     };
   });
+
+  // The actual guarantee: drop anything explicitly tagged as a non-English
+  // language. An untagged result is kept rather than risk losing a real
+  // match over missing metadata — Google leaves `language` off some items.
+  if (opts.englishOnly) {
+    return volumes.filter((v) => !v.language || v.language === "en");
+  }
+  return volumes;
 }
 
 // Google Books search operators don't escape quotes inside the value, so strip
@@ -65,23 +84,33 @@ function sanitize(value: string): string {
   return value.replace(/"/g, "");
 }
 
+// English-only — this feeds the Upcoming Releases watch list, and an
+// author's back-catalog search pulls in every translated edition Google
+// has indexed right alongside the real English releases.
 export async function searchByAuthor(author: string): Promise<GoogleVolume[]> {
-  return searchVolumes(`inauthor:"${sanitize(author)}"`, 20);
+  return searchVolumes(`inauthor:"${sanitize(author)}"`, 20, { englishOnly: true });
 }
 
 // ISBN barcode scan lookup — Google's isbn: search operand is an exact
 // identifier match, not a keyword search, so a handful of candidates is
-// plenty and the first result is normally the right one.
+// plenty and the first result is normally the right one. Not English-only:
+// the ISBN already pins one specific edition, so a language filter here
+// would only risk rejecting a legitimate match over stale metadata.
 export async function searchByIsbn(isbn: string): Promise<GoogleVolume[]> {
   return searchVolumes(`isbn:${sanitize(isbn)}`, 5);
 }
 
+// English-only, same reasoning as searchByAuthor — Black Library's German
+// and French Warhammer editions show up in this publisher search too.
 export async function searchBlackLibraryCatalog(): Promise<GoogleVolume[]> {
-  return searchVolumes(`inpublisher:"Black Library"`, 40);
+  return searchVolumes(`inpublisher:"Black Library"`, 40, { englishOnly: true });
 }
 
-// Used to enrich an existing library entry (cover, description, ISBN) —
-// we only need a handful of candidates to pick the best match from.
+// Used to enrich an existing library entry (cover, description, ISBN).
+// English-only for the same reason: an identically (or similarly) titled
+// foreign edition can otherwise out-rank the real English one and hand a
+// book its wrong-language cover. maxResults is a little higher than the
+// bare minimum since the post-filter can remove a few candidates.
 export async function searchByTitleAuthor(
   title: string,
   author: string | null
@@ -89,5 +118,5 @@ export async function searchByTitleAuthor(
   const q = author
     ? `intitle:"${sanitize(title)}" inauthor:"${sanitize(author)}"`
     : `intitle:"${sanitize(title)}"`;
-  return searchVolumes(q, 5);
+  return searchVolumes(q, 10, { englishOnly: true });
 }
