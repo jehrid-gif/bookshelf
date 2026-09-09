@@ -50,6 +50,15 @@ const COMPARATORS: Record<SortKey, (a: Book, b: Book) => number> = {
   rating: (a, b) => (a.my_rating || 0) - (b.my_rating || 0),
 };
 
+// The Shelf view's default order (no column explicitly sorted, which is the
+// only sort control the Table view exposes — Shelf has no headers of its
+// own): Author, then Series/series position within that author, falling
+// back to title for standalone books. The Table view's own default stays
+// board_pos, its original Trello-derived manual order.
+function shelfDefaultComparator(a: Book, b: Book): number {
+  return COMPARATORS.author(a, b) || COMPARATORS.series(a, b) || COMPARATORS.title(a, b);
+}
+
 function LibraryInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -270,6 +279,8 @@ function LibraryInner() {
     if (sortKey) {
       const cmp = COMPARATORS[sortKey];
       sorted.sort((a, b) => (sortDir === "asc" ? cmp(a, b) : -cmp(a, b)));
+    } else if (view === "shelf") {
+      sorted.sort(shelfDefaultComparator);
     } else {
       sorted.sort((a, b) => a.board_pos - b.board_pos || a.title.localeCompare(b.title));
     }
@@ -292,6 +303,7 @@ function LibraryInner() {
     duplicateIds,
     sortKey,
     sortDir,
+    view,
   ]);
 
   function resetFilters() {

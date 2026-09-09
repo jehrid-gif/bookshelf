@@ -338,16 +338,21 @@ export default function DashboardPage() {
       const done = sub.filter((b) => b.status === "finished").length;
       return { done, total: sub.length, percent: sub.length ? Math.round((done / sub.length) * 100) : 0 };
     }
-    const physical = trackedList.filter(
+    // Completion by Format asks "how much of what I actually own have I
+    // finished" — a to-read book you don't own yet (still shopping for it)
+    // isn't something you can be "behind" on finishing, so it shouldn't
+    // drag the percentage down. Based on `owned`, not the wider
+    // `trackedList` that "Total Books" above uses.
+    const physical = owned.filter(
       (b) => b.format === "physical" || b.format === "physical+ebook"
     );
-    const digital = trackedList.filter(
+    const digital = owned.filter(
       (b) => b.format === "ebook" || b.format === "physical+ebook"
     );
     const formatBreakdown = [
       { label: "Physical", ...pct(physical) },
       { label: "Digital", ...pct(digital) },
-      { label: "All Books", ...pct(trackedList) },
+      { label: "All Books", ...pct(owned) },
     ];
 
     return {
