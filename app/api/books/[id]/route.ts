@@ -31,6 +31,49 @@ const EDITABLE_COLUMNS = [
   "board_pos",
 ];
 
+// Finishing a book is the natural moment to line up what's next in its
+// series — this nudges the very next entry's Priority flag on so it
+// surfaces at the top of the To Read column (see app/page.tsx) without a
+// manual trip back here. Only ever ADDS the flag: it never clears Priority
+// on anything, since you may genuinely be partway through several series
+// in parallel and each deserves its own nudge independently.
+async function bumpNextInSeriesPriority(book: Book): Promise<void> {
+  if (!book.series || book.series_index === null || book.series_index === undefined) return;
+  try {
+    const next = await queryOne<Book>(
+      `SELECT * FROM books
+       WHERE series = $1
+         AND series_index IS NOT NULL
+         AND series_index > $2
+         AND status = 'to_read'
+         AND priority = false
+         AND is_reread = false
+         AND trello_id <> $3
+       ORDER BY series_index ASC
+       LIMIT 1`,
+      [book.series, book.series_index, book.trello_id]
+    );
+    if (!next) return;
+
+    const nextUpdated = await queryOne<Book>(
+      `UPDATE books SET priority = true, updated_at = now() WHERE trello_id = $1 RETURNING *`,
+      [next.trello_id]
+    );
+    if (!nextUpdated) return;
+
+    await logChange({
+      bookId: nextUpdated.trello_id,
+      bookTitle: nextUpdated.title,
+      action: "updated",
+      before: next,
+      after: nextUpdated,
+    });
+  } catch {
+    // Best-effort nudge — must never block the status update that
+    // triggered it, so any failure here is swallowed.
+  }
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: { id: string } }
@@ -92,6 +135,10 @@ export async function PATCH(
       before,
       after: updated,
     });
+
+    if (before.status !== "finished" && updated.status === "finished") {
+      await bumpNextInSeriesPriority(updated);
+    }
 
     return NextResponse.json(updated);
   } catch (err: any) {
