@@ -338,21 +338,27 @@ export default function DashboardPage() {
       const done = sub.filter((b) => b.status === "finished").length;
       return { done, total: sub.length, percent: sub.length ? Math.round((done / sub.length) * 100) : 0 };
     }
-    // Completion by Format asks "how much of what I actually own have I
-    // finished" — a to-read book you don't own yet (still shopping for it)
-    // isn't something you can be "behind" on finishing, so it shouldn't
-    // drag the percentage down. Based on `owned`, not the wider
-    // `trackedList` that "Total Books" above uses.
-    const physical = owned.filter(
+    // Completion by Format asks "how much of what's actually mine have I
+    // finished" — that's books owned right now, PLUS anything already
+    // finished even if it's since been sold, lent out, or donated (finishing
+    // it doesn't stop being true just because it's no longer on the shelf).
+    // Plain `owned` alone got the first half right but quietly dropped that
+    // second group, which undercounted "done" for anyone who's ever passed
+    // on a book after reading it. A to-read book that isn't owned yet and
+    // hasn't been read (still just on the want-list) is the only thing this
+    // excludes — which was the actual original complaint: an unacquired
+    // backlog item shouldn't drag the percentage down.
+    const completionBase = trackedList.filter((b) => b.owned || b.status === "finished");
+    const physical = completionBase.filter(
       (b) => b.format === "physical" || b.format === "physical+ebook"
     );
-    const digital = owned.filter(
+    const digital = completionBase.filter(
       (b) => b.format === "ebook" || b.format === "physical+ebook"
     );
     const formatBreakdown = [
       { label: "Physical", ...pct(physical) },
       { label: "Digital", ...pct(digital) },
-      { label: "All Books", ...pct(owned) },
+      { label: "All Books", ...pct(completionBase) },
     ];
 
     return {
